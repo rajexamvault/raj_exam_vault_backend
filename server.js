@@ -49,17 +49,21 @@ app.use(globalErrorHandler);
 // Auto-create database if not exists before Sequelize connects
 const ensureDatabaseExists = async () => {
   try {
-    const connection = await mysql.createConnection({
+    const connConfig = {
       host: appConfig.db.host,
       port: appConfig.db.port,
       user: appConfig.db.user,
       password: appConfig.db.password
-    });
+    };
+    if (appConfig.db.ssl) {
+      connConfig.ssl = { rejectUnauthorized: false };
+    }
+    const connection = await mysql.createConnection(connConfig);
     await connection.query(`CREATE DATABASE IF NOT EXISTS \`${appConfig.db.name}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
     await connection.end();
     console.log(`✅ MySQL Database '${appConfig.db.name}' verified / created with utf8mb4 support.`);
   } catch (err) {
-    console.warn(`⚠️ Warning connecting to MySQL root: ${err.message}`);
+    console.warn(`⚠️ Warning connecting to MySQL root / checking database: ${err.message}`);
   }
 };
 
@@ -71,7 +75,9 @@ const startServer = async () => {
     console.log('✅ Database connected successfully via Sequelize.');
 
     // Auto-sync database schema with models
+    await sequelize.query('SET FOREIGN_KEY_CHECKS = 0;');
     await sequelize.sync();
+    await sequelize.query('SET FOREIGN_KEY_CHECKS = 1;');
     console.log('✅ Database models synchronized successfully.');
 
     // Seed/sync default RBAC roles and permissions

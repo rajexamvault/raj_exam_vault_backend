@@ -12,6 +12,7 @@ const appConfig = {
     password: process.env.DB_PASSWORD || '',
     name: process.env.DB_NAME || 'raj_exam_vault',
     dialect: 'mysql',
+    ssl: process.env.DB_SSL === 'true' || process.env.DB_SSL === 'REQUIRED',
     logging: process.env.NODE_ENV === 'development' ? false : false,
     pool: {
       max: parseInt(process.env.DB_POOL_MAX || '15', 10),
