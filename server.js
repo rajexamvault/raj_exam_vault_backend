@@ -1,0 +1,97 @@
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const mysql = require('mysql2/promise');
+const appConfig = require('./config/appConfig');
+
+const { sequelize } = require('./models');
+const apiRoutes = require('./routes');
+const authRoutes = require('./routes/authRoutes');
+const { notFoundHandler, globalErrorHandler } = require('./middleware/errorMiddleware');
+
+const app = express();
+const PORT = appConfig.port;
+
+// Global Middleware
+app.use(cors({
+  origin: [appConfig.frontendUrl, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true
+}));
+app.use(express.json({ limit: '30mb' }));
+app.use(express.urlencoded({ extended: true, limit: '30mb' }));
+
+// Serve Local Uploads statically
+app.use('/uploads', express.static(path.join(process.cwd(), appConfig.storage.localUploadDir)));
+
+// Root Status Route
+app.get('/', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'Raj Exam Vault API Enterprise Engine is running smoothly 🚀',
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    environment: appConfig.env
+  });
+});
+
+// Master API Routes (Mounts /api/auth, /api/user, /api/exams, /api/materials, /api/superadmin, /api/health)
+app.use('/api', apiRoutes);
+
+// Fallback direct mount for backward compatibility
+app.use('/api/auth', authRoutes);
+
+// 404 Route Handler
+app.use(notFoundHandler);
+
+// Centralized Global Error Handler
+app.use(globalErrorHandler);
+
+// Auto-create database if not exists before Sequelize connects
+const ensureDatabaseExists = async () => {
+  try {
+    const connection = await mysql.createConnection({
+      host: appConfig.db.host,
+      port: appConfig.db.port,
+      user: appConfig.db.user,
+      password: appConfig.db.password
+    });
+    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${appConfig.db.name}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+    await connection.end();
+    console.log(`✅ MySQL Database '${appConfig.db.name}' verified / created with utf8mb4 support.`);
+  } catch (err) {
+    console.warn(`⚠️ Warning connecting to MySQL root: ${err.message}`);
+  }
+};
+
+// Start Server and Sync Database
+const startServer = async () => {
+  try {
+    await ensureDatabaseExists();
+    await sequelize.authenticate();
+    console.log('✅ Database connected successfully via Sequelize.');
+
+    // Auto-sync database schema with models
+    await sequelize.sync();
+    console.log('✅ Database models synchronized successfully.');
+
+    // Seed/sync default RBAC roles and permissions
+    const { seedRbac } = require('./utils/rbac/rbacSeeder');
+    await seedRbac();
+
+    // Auto-seed syllabus hierarchy for flagship exams
+    const { seedSyllabusHierarchy } = require('./utils/seeders/syllabusHierarchySeeder');
+    await seedSyllabusHierarchy();
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is listening on http://localhost:${PORT}`);
+      console.log(`📦 Storage Mode: ${appConfig.storage.provider.toUpperCase()}`);
+    });
+  } catch (error) {
+    console.error('❌ Database connection/sync failed:', error.message);
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is listening on http://localhost:${PORT} (Database offline)`);
+    });
+  }
+};
+
+startServer();
