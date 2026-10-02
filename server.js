@@ -12,11 +12,37 @@ const { notFoundHandler, globalErrorHandler } = require('./middleware/errorMiddl
 const app = express();
 const PORT = appConfig.port;
 
+// Allowed Origins for CORS
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  'https://raj-exam-vault-frontend.vercel.app',
+  appConfig.frontendUrl
+].filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests (Postman, mobile apps, server-to-server)
+    if (!origin) return callback(null, true);
+
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+    const isAllowed = allowedOrigins.some(item => item && item.replace(/\/+$/, '') === normalizedOrigin)
+      || normalizedOrigin.endsWith('.vercel.app')
+      || normalizedOrigin.includes('raj-exam-vault');
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
+};
+
 // Global Middleware
-app.use(cors({
-  origin: [appConfig.frontendUrl, 'http://localhost:3000', 'http://127.0.0.1:3000', "https://raj-exam-vault-frontend.vercel.app/"],
-  credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
@@ -34,11 +60,9 @@ app.get('/', (req, res) => {
   });
 });
 
-// Master API Routes (Mounts /api/auth, /api/user, /api/exams, /api/materials, /api/superadmin, /api/health)
+// Master API Routes (Mounts at /api as standard, and / for flexible direct routes like /auth/signup)
 app.use('/api', apiRoutes);
-
-// Fallback direct mount for backward compatibility
-app.use('/api/auth', authRoutes);
+app.use('/', apiRoutes);
 
 // 404 Route Handler
 app.use(notFoundHandler);
