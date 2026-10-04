@@ -82,8 +82,10 @@ const createQuestion = async (req, res) => {
  */
 const bulkImport = async (req, res) => {
   try {
-    const { questions, defaultExamId } = req.body ?? {};
-    const result = await questionService.bulkImport(questions, defaultExamId, req.user?.id);
+    const { questions, defaultExamId, defaultSubjectId, examId, subjectId } = req.body ?? {};
+    const finalExamId = examId || defaultExamId;
+    const finalSubjectId = subjectId || defaultSubjectId;
+    const result = await questionService.bulkImport(questions, finalExamId, req.user?.id, finalSubjectId);
     return successResponse(res, 201, result?.message ?? 'Questions imported successfully', result);
   } catch (err) {
     if (err.statusCode) {
@@ -128,6 +130,23 @@ const deleteQuestion = async (req, res) => {
   }
 };
 
+/**
+ * @route POST /api/questions/bulk-delete (Protected: question:delete)
+ */
+const bulkDeleteQuestions = async (req, res) => {
+  try {
+    const { questionIds } = req.body ?? {};
+    const result = await questionService.bulkDeleteQuestions(questionIds);
+    return successResponse(res, 200, result?.message ?? 'Questions deleted successfully', result);
+  } catch (err) {
+    if (err.statusCode) {
+      return failResponse(res, err.statusCode, err.message);
+    }
+    console.error('Bulk delete questions error:', err);
+    return errorResponse(res, 500, err?.message ?? 'Failed to delete questions', err);
+  }
+};
+
 const QuestionController = {
   getQuestions,
   getStats,
@@ -136,7 +155,8 @@ const QuestionController = {
   createQuestion,
   bulkImport,
   updateQuestion,
-  deleteQuestion
+  deleteQuestion,
+  bulkDeleteQuestions
 };
 
 module.exports = QuestionController;
@@ -148,3 +168,4 @@ module.exports.createQuestion = createQuestion;
 module.exports.bulkImport = bulkImport;
 module.exports.updateQuestion = updateQuestion;
 module.exports.deleteQuestion = deleteQuestion;
+module.exports.bulkDeleteQuestions = bulkDeleteQuestions;

@@ -1,4 +1,4 @@
-const { Question, Exam, ExamStage, Subject, Topic } = require('../models');
+const { Question, Exam, ExamStage, Subject, Topic, TestQuestion } = require('../models');
 const { Op, fn, col } = require('sequelize');
 
 class QuestionService {
@@ -78,7 +78,7 @@ class QuestionService {
         {
           model: Subject,
           as: 'subjectRef',
-          attributes: ['id', 'name', 'code']
+          attributes: ['id', 'name', 'code', 'icon', 'color']
         },
         {
           model: Topic,
@@ -118,7 +118,7 @@ class QuestionService {
         {
           model: Subject,
           as: 'subjectRef',
-          attributes: ['id', 'name', 'code']
+          attributes: ['id', 'name', 'code', 'icon', 'color']
         },
         {
           model: Topic,
@@ -138,13 +138,19 @@ class QuestionService {
   }
 
   /**
-   * Create a single question
+   * Create a single question - Exam and Subject are mandatory
    */
   async createQuestion(data, userId) {
-    const { examId, questionHindi, questionEnglish, options, correctAnswer } = data;
+    const { examId, subjectId, questionHindi, questionEnglish, options, correctAnswer } = data;
 
     if (!examId) {
       const err = new Error('Please select an Exam for this question');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!subjectId) {
+      const err = new Error('Subject is mandatory. Please select a Subject for this question');
       err.statusCode = 400;
       throw err;
     }
@@ -167,11 +173,20 @@ class QuestionService {
       throw err;
     }
 
+    // Auto-resolve stageId from subject if not provided
+    let stageId = data.stageId ? Number(data.stageId) : null;
+    if (!stageId && subjectId) {
+      const subject = await Subject.findByPk(Number(subjectId));
+      if (subject?.stageId) {
+        stageId = subject.stageId;
+      }
+    }
+
     const question = await Question.create({
       ...data,
       examId: Number(examId),
-      stageId: data.stageId ? Number(data.stageId) : null,
-      subjectId: data.subjectId ? Number(data.subjectId) : null,
+      subjectId: Number(subjectId),
+      stageId,
       topicId: data.topicId ? Number(data.topicId) : null,
       createdBy: userId || null
     });
@@ -182,35 +197,139 @@ class QuestionService {
   /**
    * Bulk import questions
    */
-  async bulkImport(questionsArray, defaultExamId, userId) {
+  async bulkImport(questionsArray, defaultExamId, userId, defaultSubjectId = null) {
     if (!Array.isArray(questionsArray) || questionsArray.length === 0) {
       const err = new Error('Import data must be a non-empty array of questions');
       err.statusCode = 400;
       throw err;
     }
 
-    const sanitizedQuestions = questionsArray.map((q) => {
+    let defaultStageId = null;
+    if (defaultSubjectId) {
+      const sub = await Subject.findByPk(Number(defaultSubjectId));
+      if (sub?.stageId) defaultStageId = sub.stageId;
+    }
+
+    const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const sanitizedQuestions = [];
+
+    for (const q of questionsArray) {
       const examId = q.examId || defaultExamId;
       if (!examId) {
-        throw new Error('Exam ID is missing on one or more question records');
+        throw new Error('Exam ID is missing on one or more question records. Please select a Target Exam.');
       }
 
-      return {
-        ...q,
+      let subjectId = q.subjectId ? Number(q.subjectId) : (defaultSubjectId ? Number(defaultSubjectId) : null);
+      let stageId = q.stageId ? Number(q.stageId) : defaultStageId;
+
+      if (!stageId && subjectId) {
+        const subject = await Subject.findByPk(subjectId);
+        if (subject?.stageId) stageId = subject.stageId;
+      }
+
+      // 1. Text normalization: questionHindi / questionEnglish / question / questionText
+      let questionHindi = q.questionHindi || '';
+      let questionEnglish = q.questionEnglish || '';
+      const rawQuestion = q.question || q.questionText || '';
+
+      if (!questionHindi && !questionEnglish && rawQuestion) {
+        const isHindi = /[\u0900-\u097F]/.test(rawQuestion);
+        if (isHindi) {
+          questionHindi = rawQuestion;
+        } else {
+          questionEnglish = rawQuestion;
+        }
+      }
+
+      // 2. Answer normalization
+      const rawAns = q.correctAnswer !== undefined ? q.correctAnswer : (q.answer !== undefined ? q.answer : 'A');
+      let normalizedAnswer = 'A';
+      if (typeof rawAns === 'number') {
+        if (rawAns >= 0 && rawAns <= 5) {
+          normalizedAnswer = optionLetters[rawAns] || 'A';
+        }
+      } else {
+        const strAns = String(rawAns).trim().toUpperCase();
+        if (/^[1-6]$/.test(strAns)) {
+          normalizedAnswer = optionLetters[parseInt(strAns, 10) - 1] || 'A';
+        } else if (/^[A-F]$/.test(strAns)) {
+          normalizedAnswer = strAns;
+        } else {
+          normalizedAnswer = strAns || 'A';
+        }
+      }
+
+      // 3. Options normalization (handles string array ["opt1", "opt2"] or object array)
+      let options = [];
+      if (Array.isArray(q.options) && q.options.length > 0) {
+        if (typeof q.options[0] === 'string') {
+          options = q.options.map((optStr, idx) => {
+            const letter = optionLetters[idx] || String(idx + 1);
+            const isOptHindi = /[\u0900-\u097F]/.test(optStr);
+            return {
+              id: letter,
+              textHindi: isOptHindi ? optStr : '',
+              textEnglish: isOptHindi ? '' : optStr,
+              isCorrect: normalizedAnswer === letter
+            };
+          });
+        } else {
+          options = q.options.map((opt, idx) => {
+            const letter = opt.id || optionLetters[idx] || String(idx + 1);
+            return {
+              id: letter,
+              textHindi: opt.textHindi || (opt.text && /[\u0900-\u097F]/.test(opt.text) ? opt.text : ''),
+              textEnglish: opt.textEnglish || (opt.text && !/[\u0900-\u097F]/.test(opt.text) ? opt.text : ''),
+              isCorrect: opt.isCorrect !== undefined ? Boolean(opt.isCorrect) : (normalizedAnswer === letter)
+            };
+          });
+        }
+      } else {
+        options = [
+          { id: 'A', textHindi: '', textEnglish: '', isCorrect: normalizedAnswer === 'A' },
+          { id: 'B', textHindi: '', textEnglish: '', isCorrect: normalizedAnswer === 'B' }
+        ];
+      }
+
+      // 4. Explanations
+      let explanationHindi = q.explanationHindi || '';
+      let explanationEnglish = q.explanationEnglish || '';
+      if (q.explanation && !explanationHindi && !explanationEnglish) {
+        if (/[\u0900-\u097F]/.test(q.explanation)) {
+          explanationHindi = q.explanation;
+        } else {
+          explanationEnglish = q.explanation;
+        }
+      }
+
+      // 5. PYQ metadata
+      const isPreviousYear = Boolean(q.isPreviousYear || q.type === 'pyq' || q.year || q.pyqYear);
+      const pyqYear = q.pyqYear ? Number(q.pyqYear) : (q.year ? Number(q.year) : null);
+      const pyqExamName = q.pyqExamName || (typeof q.exam === 'string' ? q.exam : null);
+
+      sanitizedQuestions.push({
         examId: Number(examId),
-        stageId: q.stageId ? Number(q.stageId) : null,
-        subjectId: q.subjectId ? Number(q.subjectId) : null,
+        subjectId,
+        stageId,
         topicId: q.topicId ? Number(q.topicId) : null,
-        options: Array.isArray(q.options) ? q.options : [],
-        correctAnswer: String(q.correctAnswer || 'A'),
+        questionType: q.questionType || 'single_choice',
+        questionHindi,
+        questionEnglish,
+        options,
+        correctAnswer: normalizedAnswer,
+        explanationHindi,
+        explanationEnglish,
         difficultyLevel: q.difficultyLevel || 'medium',
         marks: q.marks ? Number(q.marks) : 1.0,
         negativeMarks: q.negativeMarks !== undefined ? Number(q.negativeMarks) : 0.33,
-        isPreviousYear: !!q.isPreviousYear,
+        isPreviousYear,
+        pyqYear,
+        pyqExamName,
+        tags: Array.isArray(q.tags) ? q.tags : (q.topic ? [String(q.topic)] : []),
         status: q.status || 'active',
         createdBy: userId || null
-      };
-    });
+      });
+    }
 
     const created = await Question.bulkCreate(sanitizedQuestions);
     return {
@@ -232,8 +351,14 @@ class QuestionService {
     }
 
     if (data.examId) data.examId = Number(data.examId);
+    if (data.subjectId) {
+      data.subjectId = Number(data.subjectId);
+      if (!data.stageId) {
+        const subject = await Subject.findByPk(data.subjectId);
+        if (subject?.stageId) data.stageId = subject.stageId;
+      }
+    }
     if (data.stageId) data.stageId = Number(data.stageId);
-    if (data.subjectId) data.subjectId = Number(data.subjectId);
     if (data.topicId) data.topicId = Number(data.topicId);
 
     await question.update(data);
@@ -241,7 +366,7 @@ class QuestionService {
   }
 
   /**
-   * Delete question
+   * Delete single question
    */
   async deleteQuestion(id) {
     const question = await Question.findByPk(id);
@@ -251,8 +376,38 @@ class QuestionService {
       throw err;
     }
 
+    // Clean up dependent mock test questions to prevent FK constraint failures
+    await TestQuestion.destroy({ where: { questionId: id } });
     await question.destroy();
-    return { success: true, message: 'Question removed from question bank' };
+    return { success: true, message: 'Question deleted successfully from Question Bank 🗑️' };
+  }
+
+  /**
+   * Bulk delete questions
+   */
+  async bulkDeleteQuestions(questionIds = []) {
+    if (!Array.isArray(questionIds) || questionIds.length === 0) {
+      const err = new Error('Please select at least one question to delete');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const sanitizedIds = questionIds.map((id) => Number(id)).filter(Boolean);
+    if (sanitizedIds.length === 0) {
+      const err = new Error('Invalid question IDs provided');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Clean up dependent mock test questions
+    await TestQuestion.destroy({ where: { questionId: { [Op.in]: sanitizedIds } } });
+    const deletedCount = await Question.destroy({ where: { id: { [Op.in]: sanitizedIds } } });
+
+    return {
+      success: true,
+      deletedCount,
+      message: `Successfully deleted ${deletedCount} questions from Question Bank 🗑️`
+    };
   }
 
   /**
@@ -270,12 +425,36 @@ class QuestionService {
     const hardCount = await Question.count({ where: { ...where, difficultyLevel: 'hard' } });
     const pyqCount = await Question.count({ where: { ...where, isPreviousYear: true } });
 
+    // Exam division breakdown
+    let examBreakdown = [];
+    try {
+      const examCounts = await Question.findAll({
+        attributes: ['examId', [fn('COUNT', col('Question.id')), 'count']],
+        group: ['examId', 'exam.id'],
+        include: [{
+          model: Exam,
+          as: 'exam',
+          attributes: ['id', 'title', 'shortName', 'category', 'icon']
+        }],
+        raw: false
+      });
+
+      examBreakdown = examCounts.map(item => ({
+        examId: item.examId,
+        count: parseInt(item.get('count'), 10) || 0,
+        exam: item.exam
+      }));
+    } catch (e) {
+      console.warn('Could not compute exam breakdown stats:', e.message);
+    }
+
     return {
       totalQuestions,
       easyCount,
       mediumCount,
       hardCount,
-      pyqCount
+      pyqCount,
+      examBreakdown
     };
   }
 

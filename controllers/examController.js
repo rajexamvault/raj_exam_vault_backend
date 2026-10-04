@@ -36,12 +36,43 @@ const getExamByIdOrSlug = async (req, res) => {
 };
 
 /**
+ * @route GET /api/exams/:examId/subjects
+ */
+const getExamSubjects = async (req, res) => {
+  try {
+    const { examId } = req.params ?? {};
+    const subjects = await ExamService.getExamSubjects(examId);
+    return successResponse(res, 200, 'Exam subjects retrieved successfully', { subjects });
+  } catch (err) {
+    console.error('Get exam subjects error:', err);
+    return errorResponse(res, 500, err?.message ?? 'Failed to fetch exam subjects', err);
+  }
+};
+
+/**
+ * @route POST /api/exams/:examId/subjects (Protected: exam:update)
+ */
+const addExamSubject = async (req, res) => {
+  try {
+    const { examId } = req.params ?? {};
+    const subject = await ExamService.addExamSubject(examId, req.body ?? {});
+    return successResponse(res, 201, 'Subject dynamically added to exam 📚', { subject });
+  } catch (err) {
+    if (err.statusCode) {
+      return failResponse(res, err.statusCode, err.message);
+    }
+    console.error('Add exam subject error:', err);
+    return errorResponse(res, 500, err?.message ?? 'Failed to add subject to exam', err);
+  }
+};
+
+/**
  * @route POST /api/exams (SuperAdmin/Admin only)
  */
 const createExam = async (req, res) => {
   try {
     const exam = await ExamService.createExam(req.body ?? {}, req.user?.id);
-    return successResponse(res, 201, 'Exam created successfully 🎯', { exam });
+    return successResponse(res, 201, 'Exam created successfully with dynamic subjects 🎯', { exam });
   } catch (err) {
     if (err.statusCode) {
       return failResponse(res, err.statusCode, err.message);
@@ -88,6 +119,8 @@ const deleteExam = async (req, res) => {
 const ExamController = {
   getAllExams,
   getExamByIdOrSlug,
+  getExamSubjects,
+  addExamSubject,
   createExam,
   updateExam,
   deleteExam
@@ -96,6 +129,8 @@ const ExamController = {
 module.exports = ExamController;
 module.exports.getAllExams = getAllExams;
 module.exports.getExamByIdOrSlug = getExamByIdOrSlug;
+module.exports.getExamSubjects = getExamSubjects;
+module.exports.addExamSubject = addExamSubject;
 module.exports.createExam = createExam;
 module.exports.updateExam = updateExam;
 module.exports.deleteExam = deleteExam;

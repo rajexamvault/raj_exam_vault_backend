@@ -10,13 +10,16 @@ const authRoutes = require('./routes/authRoutes');
 const { notFoundHandler, globalErrorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
-const PORT = appConfig.port;
+const PORT = appConfig.port; // Raj Exam Vault API Engine 🚀
 
 // Allowed Origins for CORS
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://192.168.1.4:3000',
+  'http://192.168.1.4:3001',
   'https://raj-exam-vault-frontend.vercel.app',
   appConfig.frontendUrl
 ].filter(Boolean);
@@ -27,7 +30,12 @@ const corsOptions = {
     if (!origin) return callback(null, true);
 
     const normalizedOrigin = origin.replace(/\/+$/, '');
-    const isAllowed = allowedOrigins.some(item => item && item.replace(/\/+$/, '') === normalizedOrigin)
+    
+    // Allow any localhost, loopback, or private LAN IP (192.168.x.x, 10.x.x.x, 172.16-31.x.x) on any port
+    const isLocalOrLan = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(normalizedOrigin);
+
+    const isAllowed = isLocalOrLan
+      || allowedOrigins.some(item => item && item.replace(/\/+$/, '') === normalizedOrigin)
       || normalizedOrigin.endsWith('.vercel.app')
       || normalizedOrigin.includes('raj-exam-vault');
 
@@ -100,6 +108,24 @@ const startServer = async () => {
 
     // Auto-sync database schema with models
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 0;');
+    try {
+      await sequelize.query('ALTER TABLE `ExamStages` DROP FOREIGN KEY `ExamStages_ibfk_1`;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `ExamStages` ADD CONSTRAINT `ExamStages_ibfk_1` FOREIGN KEY (`examId`) REFERENCES `exams` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `Subjects` DROP FOREIGN KEY `Subjects_ibfk_2`;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `Subjects` ADD CONSTRAINT `Subjects_ibfk_2` FOREIGN KEY (`examId`) REFERENCES `exams` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `SyllabusItems` DROP FOREIGN KEY `SyllabusItems_ibfk_1`;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `SyllabusItems` ADD CONSTRAINT `SyllabusItems_ibfk_1` FOREIGN KEY (`examId`) REFERENCES `exams` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;');
+    } catch (_) {}
     await sequelize.sync();
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1;');
     console.log('✅ Database models synchronized successfully.');
@@ -112,13 +138,13 @@ const startServer = async () => {
     const { seedSyllabusHierarchy } = require('./utils/seeders/syllabusHierarchySeeder');
     await seedSyllabusHierarchy();
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Server is listening on http://localhost:${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server is listening on http://localhost:${PORT} (0.0.0.0:${PORT})`);
       console.log(`📦 Storage Mode: ${appConfig.storage.provider.toUpperCase()}`);
     });
   } catch (error) {
     console.error('❌ Database connection/sync failed:', error.message);
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server is listening on http://localhost:${PORT} (Database offline)`);
     });
   }

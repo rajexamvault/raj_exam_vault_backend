@@ -11,7 +11,7 @@ const SyllabusItem = sequelize.define('SyllabusItem', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'Exams',
+      model: 'exams',
       key: 'id'
     },
     onDelete: 'CASCADE'

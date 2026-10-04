@@ -11,7 +11,7 @@ const ExamStage = sequelize.define('ExamStage', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'Exams',
+      model: 'exams',
       key: 'id'
     },
     onDelete: 'CASCADE'

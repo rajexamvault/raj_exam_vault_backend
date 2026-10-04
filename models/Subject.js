@@ -20,7 +20,7 @@ const Subject = sequelize.define('Subject', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'Exams',
+      model: 'exams',
       key: 'id'
     },
     onDelete: 'CASCADE'

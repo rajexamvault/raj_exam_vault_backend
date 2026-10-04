@@ -1,9 +1,9 @@
-const { Exam, StudyMaterial, ExamStage, MockTest, Question, User, sequelize } = require('../models');
+const { Exam, StudyMaterial, ExamStage, MockTest, Question, User, Subject, sequelize } = require('../models');
 const { Op } = require('sequelize');
 
 class ExamService {
   /**
-   * Get all exams with search, category/type filtering, and attached materials summary
+   * Get all exams with search, category/type filtering, subjects, and attached materials summary
    */
   static async getAllExams(query = {}) {
     const page = parseInt(query.page) || 1;
@@ -54,6 +54,12 @@ class ExamService {
       ],
       include: [
         {
+          model: Subject,
+          as: 'subjects',
+          attributes: ['id', 'name', 'code', 'icon', 'color', 'displayOrder'],
+          required: false
+        },
+        {
           model: StudyMaterial,
           as: 'materials',
           attributes: ['id', 'materialType', 'isFree', 'year', 'status'],
@@ -88,6 +94,7 @@ class ExamService {
       const stages = plain.stages || [];
       const mockTests = plain.mockTests || [];
       const questions = plain.questions || [];
+      const subjects = plain.subjects || [];
 
       const pyqCount = materials.filter((m) => m.materialType === 'pyq' && (m.status === 'published' || m.status === 'active')).length;
       const notesCount = materials.filter((m) => m.materialType === 'notes' && (m.status === 'published' || m.status === 'active')).length;
@@ -96,6 +103,7 @@ class ExamService {
 
       return {
         ...plain,
+        subjects,
         stats: {
           totalMaterials: materials.length,
           pyqCount,
@@ -103,6 +111,7 @@ class ExamService {
           syllabusCount,
           freeCount,
           stageCount: stages.length,
+          subjectCount: subjects.length,
           testCount: mockTests.length,
           questionCount: questions.length
         }
@@ -121,7 +130,7 @@ class ExamService {
   }
 
   /**
-   * Get single exam by ID or slug with all attached study materials
+   * Get single exam by ID or slug with all attached study materials and subjects
    */
   static async getExamByIdOrSlug(idOrSlug) {
     const isNum = !isNaN(idOrSlug) && !isNaN(parseFloat(idOrSlug));
@@ -131,8 +140,18 @@ class ExamService {
       where,
       include: [
         {
+          model: Subject,
+          as: 'subjects',
+          attributes: ['id', 'name', 'code', 'icon', 'color', 'displayOrder']
+        },
+        {
           model: StudyMaterial,
           as: 'materials'
+        },
+        {
+          model: ExamStage,
+          as: 'stages',
+          attributes: ['id', 'name', 'stageOrder']
         }
       ]
     });
@@ -163,7 +182,121 @@ class ExamService {
   }
 
   /**
-   * Create new Dynamic Exam
+   * Get all subjects for a given exam
+   */
+  static async getExamSubjects(examId) {
+    const isNum = !isNaN(examId) && !isNaN(parseFloat(examId));
+    let id = isNum ? Number(examId) : examId;
+    if (!isNum) {
+      const exam = await Exam.findOne({ where: { slug: examId } });
+      if (!exam) return [];
+      id = exam.id;
+    }
+
+    let subjects = await Subject.findAll({
+      where: { examId: id },
+      order: [['displayOrder', 'ASC'], ['id', 'ASC']]
+    });
+
+    // If existing legacy exam has no subjects yet, auto-initialize standard Rajasthan subjects
+    if (subjects.length === 0) {
+      let stage = await ExamStage.findOne({ where: { examId: id } });
+      if (!stage) {
+        stage = await ExamStage.create({
+          examId: id,
+          name: 'General / Main Stage',
+          stageOrder: 1
+        });
+      }
+
+      const defaultSubjects = [
+        'Rajasthan History, Art & Culture',
+        'Rajasthan Geography',
+        'Rajasthan Polity & Admin',
+        'General Science & Technology',
+        'Reasoning & Mental Ability'
+      ];
+
+      for (let i = 0; i < defaultSubjects.length; i++) {
+        const sName = defaultSubjects[i];
+        await Subject.create({
+          examId: id,
+          stageId: stage.id,
+          name: sName,
+          slug: sName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
+          displayOrder: i + 1,
+          icon: 'BookOpen',
+          color: 'blue'
+        });
+      }
+
+      subjects = await Subject.findAll({
+        where: { examId: id },
+        order: [['displayOrder', 'ASC'], ['id', 'ASC']]
+      });
+    }
+
+    return subjects;
+  }
+
+  /**
+   * Dynamically add subject to an existing exam
+   */
+  static async addExamSubject(examId, subjectData) {
+    const isNum = !isNaN(examId) && !isNaN(parseFloat(examId));
+    let id = examId;
+    let targetExam = null;
+    if (!isNum) {
+      targetExam = await Exam.findOne({ where: { slug: examId } });
+      if (!targetExam) {
+        const err = new Error('Exam not found');
+        err.statusCode = 404;
+        throw err;
+      }
+      id = targetExam.id;
+    } else {
+      targetExam = await Exam.findByPk(id);
+      if (!targetExam) {
+        const err = new Error('Exam not found');
+        err.statusCode = 404;
+        throw err;
+      }
+    }
+
+    const { name, code, icon, color, description } = subjectData;
+    if (!name || !name.trim()) {
+      const err = new Error('Subject name is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    let stage = await ExamStage.findOne({ where: { examId: id } });
+    if (!stage) {
+      stage = await ExamStage.create({
+        examId: id,
+        name: 'General / Main Stage',
+        stageOrder: 1
+      });
+    }
+
+    const count = await Subject.count({ where: { examId: id } });
+
+    const newSubject = await Subject.create({
+      examId: id,
+      stageId: stage.id,
+      name: name.trim(),
+      code: code ? code.trim() : null,
+      icon: icon || 'BookOpen',
+      color: color || 'blue',
+      description: description || null,
+      displayOrder: count + 1
+    });
+
+    return newSubject;
+  }
+
+  /**
+   * Create new Dynamic Exam with mandatory subjects
    */
   static async createExam(examData, userId) {
     const {
@@ -186,11 +319,24 @@ class ExamService {
       examDate,
       isFeatured,
       displayOrder,
-      status
+      status,
+      subjects
     } = examData;
 
     if (!title || !title.trim()) {
       const err = new Error('Exam name/title is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Dynamic subjects are mandatory when creating an exam
+    const rawSubjects = subjects || [];
+    const subjectList = (Array.isArray(rawSubjects) ? rawSubjects : String(rawSubjects).split(','))
+      .map((s) => (typeof s === 'string' ? s.trim() : (s?.name || '').trim()))
+      .filter(Boolean);
+
+    if (subjectList.length === 0) {
+      const err = new Error('Subject is mandatory. Please add at least one subject for this exam.');
       err.statusCode = 400;
       throw err;
     }
@@ -232,7 +378,32 @@ class ExamService {
       createdBy: userId || null
     });
 
-    return newExam;
+    // Create default stage for the exam
+    const stage = await ExamStage.create({
+      examId: newExam.id,
+      name: 'General / Main Stage',
+      stageOrder: 1
+    });
+
+    // Create mandatory dynamic subjects
+    const createdSubjects = [];
+    for (let i = 0; i < subjectList.length; i++) {
+      const sName = subjectList[i];
+      const created = await Subject.create({
+        examId: newExam.id,
+        stageId: stage.id,
+        name: sName,
+        displayOrder: i + 1,
+        icon: 'BookOpen',
+        color: 'blue'
+      });
+      createdSubjects.push(created);
+    }
+
+    const plainExam = newExam.get({ plain: true });
+    plainExam.subjects = createdSubjects;
+    plainExam.stages = [stage];
+    return plainExam;
   }
 
   /**
@@ -262,6 +433,37 @@ class ExamService {
     }
     if (updateData.displayOrder !== undefined) {
       updateData.displayOrder = Number(updateData.displayOrder);
+    }
+
+    // Dynamic subjects update/sync if provided
+    if (updateData.subjects !== undefined) {
+      const rawSubjects = updateData.subjects;
+      const subjectList = (Array.isArray(rawSubjects) ? rawSubjects : String(rawSubjects).split(','))
+        .map((s) => (typeof s === 'string' ? s.trim() : (s?.name || '').trim()))
+        .filter(Boolean);
+
+      if (subjectList.length > 0) {
+        let stage = await ExamStage.findOne({ where: { examId: id } });
+        if (!stage) {
+          stage = await ExamStage.create({ examId: id, name: 'General / Main Stage', stageOrder: 1 });
+        }
+        const existing = await Subject.findAll({ where: { examId: id } });
+        const existingNames = new Set(existing.map((s) => s.name.trim().toLowerCase()));
+
+        for (let i = 0; i < subjectList.length; i++) {
+          const sName = subjectList[i];
+          if (!existingNames.has(sName.toLowerCase())) {
+            await Subject.create({
+              examId: id,
+              stageId: stage.id,
+              name: sName,
+              displayOrder: existing.length + i + 1,
+              icon: 'BookOpen',
+              color: 'blue'
+            });
+          }
+        }
+      }
     }
 
     await exam.update(updateData);
