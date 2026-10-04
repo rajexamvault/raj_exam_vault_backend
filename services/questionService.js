@@ -182,12 +182,28 @@ class QuestionService {
       }
     }
 
+    // Auto findOrCreate custom topic if custom topic name provided
+    let topicId = data.topicId && data.topicId !== 'custom' ? Number(data.topicId) : null;
+    const customTopicName = data.customTopicName || data.customTopic || data.topicName;
+    if (!topicId && customTopicName && subjectId) {
+      const tName = String(customTopicName).trim();
+      if (tName) {
+        let slug = tName.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]+/g, '-').replace(/(^-|-$)+/g, '');
+        if (!slug) slug = `topic-${Date.now().toString(36)}`;
+        const [tObj] = await Topic.findOrCreate({
+          where: { subjectId: Number(subjectId), name: tName },
+          defaults: { subjectId: Number(subjectId), name: tName, slug, difficultyLevel: 'medium', status: 'active' }
+        });
+        topicId = tObj.id;
+      }
+    }
+
     const question = await Question.create({
       ...data,
       examId: Number(examId),
       subjectId: Number(subjectId),
       stageId,
-      topicId: data.topicId ? Number(data.topicId) : null,
+      topicId,
       createdBy: userId || null
     });
 
@@ -197,7 +213,7 @@ class QuestionService {
   /**
    * Bulk import questions
    */
-  async bulkImport(questionsArray, defaultExamId, userId, defaultSubjectId = null) {
+  async bulkImport(questionsArray, defaultExamId, userId, defaultSubjectId = null, defaultTopicId = null) {
     if (!Array.isArray(questionsArray) || questionsArray.length === 0) {
       const err = new Error('Import data must be a non-empty array of questions');
       err.statusCode = 400;
@@ -212,6 +228,7 @@ class QuestionService {
 
     const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
     const sanitizedQuestions = [];
+    const topicCache = {};
 
     for (const q of questionsArray) {
       const examId = q.examId || defaultExamId;
@@ -307,11 +324,32 @@ class QuestionService {
       const pyqYear = q.pyqYear ? Number(q.pyqYear) : (q.year ? Number(q.year) : null);
       const pyqExamName = q.pyqExamName || (typeof q.exam === 'string' ? q.exam : null);
 
+      let finalTopicId = q.topicId && q.topicId !== 'custom' ? Number(q.topicId) : (defaultTopicId ? Number(defaultTopicId) : null);
+      const rawTopicName = q.topic || q.topicName || q.customTopic || (typeof defaultTopicId === 'string' && isNaN(defaultTopicId) ? defaultTopicId : null);
+      if (!finalTopicId && rawTopicName && typeof rawTopicName === 'string' && subjectId) {
+        const trimmedTopic = rawTopicName.trim();
+        if (trimmedTopic) {
+          const cacheKey = `${subjectId}_${trimmedTopic.toLowerCase()}`;
+          if (topicCache[cacheKey]) {
+            finalTopicId = topicCache[cacheKey];
+          } else {
+            let slug = trimmedTopic.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]+/g, '-').replace(/(^-|-$)+/g, '');
+            if (!slug) slug = `topic-${Date.now().toString(36)}`;
+            const [tObj] = await Topic.findOrCreate({
+              where: { subjectId: Number(subjectId), name: trimmedTopic },
+              defaults: { subjectId: Number(subjectId), name: trimmedTopic, slug, difficultyLevel: 'medium', status: 'active' }
+            });
+            topicCache[cacheKey] = tObj.id;
+            finalTopicId = tObj.id;
+          }
+        }
+      }
+
       sanitizedQuestions.push({
         examId: Number(examId),
         subjectId,
         stageId,
-        topicId: q.topicId ? Number(q.topicId) : null,
+        topicId: finalTopicId,
         questionType: q.questionType || 'single_choice',
         questionHindi,
         questionEnglish,
@@ -359,7 +397,26 @@ class QuestionService {
       }
     }
     if (data.stageId) data.stageId = Number(data.stageId);
-    if (data.topicId) data.topicId = Number(data.topicId);
+    if (data.topicId && data.topicId !== 'custom') {
+      data.topicId = Number(data.topicId);
+    } else {
+      const customTopicName = data.customTopicName || data.customTopic || data.topicName;
+      const targetSubjectId = data.subjectId || question.subjectId;
+      if (customTopicName && targetSubjectId) {
+        const tName = String(customTopicName).trim();
+        if (tName) {
+          let slug = tName.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]+/g, '-').replace(/(^-|-$)+/g, '');
+          if (!slug) slug = `topic-${Date.now().toString(36)}`;
+          const [tObj] = await Topic.findOrCreate({
+            where: { subjectId: Number(targetSubjectId), name: tName },
+            defaults: { subjectId: Number(targetSubjectId), name: tName, slug, difficultyLevel: 'medium', status: 'active' }
+          });
+          data.topicId = tObj.id;
+        }
+      } else if (data.topicId === 'custom' || data.topicId === '') {
+        data.topicId = null;
+      }
+    }
 
     await question.update(data);
     return question;

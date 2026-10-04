@@ -239,6 +239,16 @@ MockTest.belongsTo(Subject, {
   as: 'subjectRef'
 });
 
+Topic.hasMany(MockTest, {
+  foreignKey: 'topicId',
+  as: 'mockTests',
+  onDelete: 'SET NULL'
+});
+MockTest.belongsTo(Topic, {
+  foreignKey: 'topicId',
+  as: 'topic'
+});
+
 // MockTest <-> Question Many-to-Many via TestQuestion
 MockTest.belongsToMany(Question, {
   through: TestQuestion,

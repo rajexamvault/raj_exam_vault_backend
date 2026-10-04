@@ -82,10 +82,11 @@ const createQuestion = async (req, res) => {
  */
 const bulkImport = async (req, res) => {
   try {
-    const { questions, defaultExamId, defaultSubjectId, examId, subjectId } = req.body ?? {};
+    const { questions, defaultExamId, defaultSubjectId, defaultTopicId, examId, subjectId, topicId } = req.body ?? {};
     const finalExamId = examId || defaultExamId;
     const finalSubjectId = subjectId || defaultSubjectId;
-    const result = await questionService.bulkImport(questions, finalExamId, req.user?.id, finalSubjectId);
+    const finalTopicId = topicId || defaultTopicId;
+    const result = await questionService.bulkImport(questions, finalExamId, req.user?.id, finalSubjectId, finalTopicId);
     return successResponse(res, 201, result?.message ?? 'Questions imported successfully', result);
   } catch (err) {
     if (err.statusCode) {

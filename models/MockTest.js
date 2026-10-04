@@ -34,6 +34,15 @@ const MockTest = sequelize.define('MockTest', {
     },
     onDelete: 'SET NULL'
   },
+  topicId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'Topics',
+      key: 'id'
+    },
+    onDelete: 'SET NULL'
+  },
   title: {
     type: DataTypes.STRING(255),
     allowNull: false,

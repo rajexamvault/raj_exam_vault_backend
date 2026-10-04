@@ -126,6 +126,30 @@ const startServer = async () => {
     try {
       await sequelize.query('ALTER TABLE `SyllabusItems` ADD CONSTRAINT `SyllabusItems_ibfk_1` FOREIGN KEY (`examId`) REFERENCES `exams` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;');
     } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `mock_tests` ADD COLUMN `topicId` INT NULL;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `mock_tests` ADD CONSTRAINT `mock_tests_topicId_fk` FOREIGN KEY (`topicId`) REFERENCES `Topics` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `MockTests` ADD COLUMN `topicId` INT NULL;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `MockTests` ADD CONSTRAINT `MockTests_topicId_fk` FOREIGN KEY (`topicId`) REFERENCES `Topics` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `questions` ADD COLUMN `topicId` INT NULL;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `questions` ADD CONSTRAINT `questions_topicId_fk` FOREIGN KEY (`topicId`) REFERENCES `Topics` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `Questions` ADD COLUMN `topicId` INT NULL;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `Questions` ADD CONSTRAINT `Questions_topicId_fk` FOREIGN KEY (`topicId`) REFERENCES `Topics` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;');
+    } catch (_) {}
     await sequelize.sync();
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1;');
     console.log('✅ Database models synchronized successfully.');
