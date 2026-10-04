@@ -57,12 +57,12 @@ class SearchService {
     // 1. Search Exams
     if (type === 'all' || type === 'exams') {
       const examWhere = {
-        status: 'active'
+        status: { [Op.in]: ['active', 'published'] }
       };
       if (query) {
         examWhere[Op.or] = [
-          { name: { [Op.like]: searchCondition } },
-          { code: { [Op.like]: searchCondition } },
+          { title: { [Op.like]: searchCondition } },
+          { shortName: { [Op.like]: searchCondition } },
           { category: { [Op.like]: searchCondition } },
           { description: { [Op.like]: searchCondition } }
         ];
@@ -72,15 +72,15 @@ class SearchService {
         where: examWhere,
         limit: type === 'exams' ? parsedLimit : 5,
         offset: type === 'exams' ? offset : 0,
-        order: [['displayOrder', 'ASC'], ['name', 'ASC']]
+        order: [['displayOrder', 'ASC'], ['title', 'ASC']]
       });
 
       results.counts.exams = count;
       results.data.exams = rows.map(e => ({
         id: e.id,
         entityType: 'exam',
-        title: e.name,
-        code: e.code,
+        title: e.title,
+        code: e.shortName,
         category: e.category,
         slug: e.slug,
         description: e.description,
@@ -91,17 +91,17 @@ class SearchService {
 
     // 2. Search Study Materials
     if (type === 'all' || type === 'materials') {
-      const matWhere = { status: 'active' };
+      const matWhere = { status: { [Op.in]: ['published', 'active'] } };
       if (examId) matWhere.examId = Number(examId);
       if (subjectId) matWhere.subjectId = Number(subjectId);
       if (isFree !== undefined && isFree !== '') matWhere.isFree = isFree === 'true';
-      if (language) matWhere.language = language;
 
       if (query) {
         matWhere[Op.or] = [
           { title: { [Op.like]: searchCondition } },
           { description: { [Op.like]: searchCondition } },
-          { contentType: { [Op.like]: searchCondition } }
+          { materialType: { [Op.like]: searchCondition } },
+          { subject: { [Op.like]: searchCondition } }
         ];
       }
 
@@ -110,10 +110,10 @@ class SearchService {
         limit: type === 'materials' ? parsedLimit : 5,
         offset: type === 'materials' ? offset : 0,
         include: [
-          { model: Exam, as: 'exam', attributes: ['id', 'name', 'code', 'slug'] },
+          { model: Exam, as: 'exam', attributes: ['id', 'title', 'shortName', 'slug'] },
           { model: Subject, as: 'subjectRef', attributes: ['id', 'name'] }
         ],
-        order: [['downloadCount', 'DESC'], ['createdAt', 'DESC']]
+        order: [['totalDownloads', 'DESC'], ['createdAt', 'DESC']]
       });
 
       results.counts.materials = count;
@@ -122,14 +122,13 @@ class SearchService {
         entityType: 'material',
         title: m.title,
         description: m.description,
-        contentType: m.contentType,
-        fileFormat: m.fileFormat,
+        contentType: m.materialType,
+        fileFormat: m.fileType,
         fileUrl: m.fileUrl,
         fileSize: m.fileSize,
         isFree: m.isFree,
         price: m.price,
-        language: m.language,
-        downloadCount: m.downloadCount,
+        downloadCount: m.totalDownloads,
         viewCount: m.viewCount,
         exam: m.exam,
         subject: m.subjectRef,
@@ -146,10 +145,10 @@ class SearchService {
 
       if (query) {
         qWhere[Op.or] = [
-          { questionTextHi: { [Op.like]: searchCondition } },
-          { questionTextEn: { [Op.like]: searchCondition } },
-          { explanationHi: { [Op.like]: searchCondition } },
-          { explanationEn: { [Op.like]: searchCondition } },
+          { questionHindi: { [Op.like]: searchCondition } },
+          { questionEnglish: { [Op.like]: searchCondition } },
+          { explanationHindi: { [Op.like]: searchCondition } },
+          { explanationEnglish: { [Op.like]: searchCondition } },
           { pyqYear: { [Op.like]: searchCondition } }
         ];
       }
@@ -159,7 +158,7 @@ class SearchService {
         limit: type === 'questions' ? parsedLimit : 5,
         offset: type === 'questions' ? offset : 0,
         include: [
-          { model: Exam, as: 'exam', attributes: ['id', 'name', 'code'] },
+          { model: Exam, as: 'exam', attributes: ['id', 'title', 'shortName'] },
           { model: Subject, as: 'subjectRef', attributes: ['id', 'name'] }
         ],
         order: [['createdAt', 'DESC']]
@@ -169,13 +168,13 @@ class SearchService {
       results.data.questions = rows.map(q => ({
         id: q.id,
         entityType: 'question',
-        questionTextHi: q.questionTextHi,
-        questionTextEn: q.questionTextEn,
+        questionTextHi: q.questionHindi,
+        questionTextEn: q.questionEnglish,
         options: q.options,
         correctAnswer: q.correctAnswer,
-        explanationHi: q.explanationHi,
-        explanationEn: q.explanationEn,
-        isPYQ: q.isPYQ,
+        explanationHi: q.explanationHindi,
+        explanationEn: q.explanationEnglish,
+        isPYQ: q.isPreviousYear,
         pyqYear: q.pyqYear,
         difficultyLevel: q.difficultyLevel,
         exam: q.exam,
@@ -188,12 +187,11 @@ class SearchService {
       const testWhere = { status: 'published' };
       if (examId) testWhere.examId = Number(examId);
       if (isFree !== undefined && isFree !== '') testWhere.isFree = isFree === 'true';
-      if (difficulty) testWhere.difficultyLevel = difficulty;
 
       if (query) {
         testWhere[Op.or] = [
           { title: { [Op.like]: searchCondition } },
-          { description: { [Op.like]: searchCondition } },
+          { instructions: { [Op.like]: searchCondition } },
           { testType: { [Op.like]: searchCondition } }
         ];
       }
@@ -203,7 +201,7 @@ class SearchService {
         limit: type === 'tests' ? parsedLimit : 5,
         offset: type === 'tests' ? offset : 0,
         include: [
-          { model: Exam, as: 'exam', attributes: ['id', 'name', 'code', 'slug'] }
+          { model: Exam, as: 'exam', attributes: ['id', 'title', 'shortName', 'slug'] }
         ],
         order: [['totalAttempts', 'DESC'], ['createdAt', 'DESC']]
       });
@@ -213,7 +211,7 @@ class SearchService {
         id: t.id,
         entityType: 'test',
         title: t.title,
-        description: t.description,
+        description: t.instructions,
         testType: t.testType,
         totalQuestions: t.totalQuestions,
         durationMinutes: t.durationMinutes,
@@ -221,7 +219,6 @@ class SearchService {
         negativeMarking: t.negativeMarking,
         isFree: t.isFree,
         price: t.price,
-        difficultyLevel: t.difficultyLevel,
         totalAttempts: t.totalAttempts,
         exam: t.exam,
         url: `/tests/${t.id}`
@@ -233,10 +230,10 @@ class SearchService {
       const caWhere = { status: 'published' };
       if (query) {
         caWhere[Op.or] = [
-          { titleHi: { [Op.like]: searchCondition } },
-          { titleEn: { [Op.like]: searchCondition } },
-          { summaryHi: { [Op.like]: searchCondition } },
-          { summaryEn: { [Op.like]: searchCondition } },
+          { titleHindi: { [Op.like]: searchCondition } },
+          { titleEnglish: { [Op.like]: searchCondition } },
+          { summaryHindi: { [Op.like]: searchCondition } },
+          { summaryEnglish: { [Op.like]: searchCondition } },
           { category: { [Op.like]: searchCondition } }
         ];
       }
@@ -245,35 +242,36 @@ class SearchService {
         where: caWhere,
         limit: type === 'current_affairs' ? parsedLimit : 5,
         offset: type === 'current_affairs' ? offset : 0,
-        order: [['publishDate', 'DESC']]
+        order: [['date', 'DESC']]
       });
 
       results.counts.currentAffairs = count;
       results.data.currentAffairs = rows.map(ca => ({
         id: ca.id,
         entityType: 'current_affair',
-        titleHi: ca.titleHi,
-        titleEn: ca.titleEn,
-        summaryHi: ca.summaryHi,
-        summaryEn: ca.summaryEn,
+        titleHi: ca.titleHindi,
+        titleEn: ca.titleEnglish,
+        summaryHi: ca.summaryHindi,
+        summaryEn: ca.summaryEnglish,
         category: ca.category,
-        publishDate: ca.publishDate,
+        publishDate: ca.date,
         viewCount: ca.viewCount,
-        likeCount: ca.likeCount,
+        likeCount: ca.likesCount,
         url: `/current-affairs`
       }));
     }
 
     // 6. Search Announcements / Flash Tickers
     if (type === 'all' || type === 'announcements') {
-      const annWhere = { isActive: true };
+      const annWhere = { status: 'active' };
       if (examId) annWhere.examId = Number(examId);
 
       if (query) {
         annWhere[Op.or] = [
           { title: { [Op.like]: searchCondition } },
           { content: { [Op.like]: searchCondition } },
-          { type: { [Op.like]: searchCondition } }
+          { summary: { [Op.like]: searchCondition } },
+          { announcementType: { [Op.like]: searchCondition } }
         ];
       }
 
@@ -282,9 +280,9 @@ class SearchService {
         limit: type === 'announcements' ? parsedLimit : 5,
         offset: type === 'announcements' ? offset : 0,
         include: [
-          { model: Exam, as: 'exam', attributes: ['id', 'name', 'code'] }
+          { model: Exam, as: 'exam', attributes: ['id', 'title', 'shortName'] }
         ],
-        order: [['isUrgent', 'DESC'], ['createdAt', 'DESC']]
+        order: [['priority', 'DESC'], ['createdAt', 'DESC']]
       });
 
       results.counts.announcements = count;
@@ -293,9 +291,9 @@ class SearchService {
         entityType: 'announcement',
         title: a.title,
         content: a.content,
-        type: a.type,
-        actionUrl: a.actionUrl,
-        isUrgent: a.isUrgent,
+        type: a.announcementType,
+        actionUrl: a.officialUrl,
+        isUrgent: a.priority === 'urgent_flash' || a.priority === 'high',
         exam: a.exam,
         createdAt: a.createdAt
       }));
@@ -326,19 +324,19 @@ class SearchService {
     // 1. Exam suggestions
     const exams = await Exam.findAll({
       where: {
-        status: 'active',
+        status: { [Op.in]: ['active', 'published'] },
         [Op.or]: [
-          { name: { [Op.like]: searchCondition } },
-          { code: { [Op.like]: searchCondition } }
+          { title: { [Op.like]: searchCondition } },
+          { shortName: { [Op.like]: searchCondition } }
         ]
       },
       limit: 3,
-      attributes: ['id', 'name', 'code', 'slug']
+      attributes: ['id', 'title', 'shortName', 'slug']
     });
 
     exams.forEach(e => {
       suggestions.push({
-        title: `${e.name} (${e.code})`,
+        title: `${e.title} (${e.shortName})`,
         type: 'Exam Portal',
         category: 'exam',
         icon: '🏛️',
@@ -349,17 +347,17 @@ class SearchService {
     // 2. Study Material suggestions
     const materials = await StudyMaterial.findAll({
       where: {
-        status: 'active',
+        status: { [Op.in]: ['active', 'published'] },
         title: { [Op.like]: searchCondition }
       },
       limit: 3,
-      attributes: ['id', 'title', 'contentType', 'isFree']
+      attributes: ['id', 'title', 'materialType', 'isFree']
     });
 
     materials.forEach(m => {
       suggestions.push({
         title: m.title,
-        type: m.contentType?.replace('_', ' ').toUpperCase() || 'NOTES',
+        type: m.materialType?.replace('_', ' ').toUpperCase() || 'NOTES',
         category: 'material',
         icon: '📚',
         url: `/materials`
@@ -391,17 +389,17 @@ class SearchService {
       where: {
         status: 'published',
         [Op.or]: [
-          { titleHi: { [Op.like]: searchCondition } },
-          { titleEn: { [Op.like]: searchCondition } }
+          { titleHindi: { [Op.like]: searchCondition } },
+          { titleEnglish: { [Op.like]: searchCondition } }
         ]
       },
       limit: 2,
-      attributes: ['id', 'titleHi', 'titleEn', 'category']
+      attributes: ['id', 'titleHindi', 'titleEnglish', 'category']
     });
 
     affairs.forEach(a => {
       suggestions.push({
-        title: a.titleHi || a.titleEn,
+        title: a.titleHindi || a.titleEnglish,
         type: a.category?.replace('_', ' ').toUpperCase() || 'CURRENT AFFAIRS',
         category: 'current_affair',
         icon: '📰',

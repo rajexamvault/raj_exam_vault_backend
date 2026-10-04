@@ -13,7 +13,11 @@ class ExamService {
     const where = {};
 
     if (query.status && query.status !== 'all') {
-      where.status = query.status;
+      if (query.status === 'active') {
+        where.status = { [Op.in]: ['active', 'published'] };
+      } else {
+        where.status = query.status;
+      }
     }
 
     if (query.category && query.category !== 'all') {
@@ -58,7 +62,7 @@ class ExamService {
         {
           model: ExamStage,
           as: 'stages',
-          attributes: ['id', 'nameHindi', 'nameEnglish'],
+          attributes: ['id', 'name', 'stageOrder'],
           required: false
         },
         {
@@ -85,10 +89,10 @@ class ExamService {
       const mockTests = plain.mockTests || [];
       const questions = plain.questions || [];
 
-      const pyqCount = materials.filter((m) => m.materialType === 'pyq' && m.status === 'published').length;
-      const notesCount = materials.filter((m) => m.materialType === 'notes' && m.status === 'published').length;
-      const syllabusCount = materials.filter((m) => m.materialType === 'syllabus' && m.status === 'published').length;
-      const freeCount = materials.filter((m) => m.isFree && m.status === 'published').length;
+      const pyqCount = materials.filter((m) => m.materialType === 'pyq' && (m.status === 'published' || m.status === 'active')).length;
+      const notesCount = materials.filter((m) => m.materialType === 'notes' && (m.status === 'published' || m.status === 'active')).length;
+      const syllabusCount = materials.filter((m) => (m.materialType === 'syllabus' || m.materialType === 'syllabus_pdf') && (m.status === 'published' || m.status === 'active')).length;
+      const freeCount = materials.filter((m) => m.isFree && (m.status === 'published' || m.status === 'active')).length;
 
       return {
         ...plain,
@@ -128,8 +132,7 @@ class ExamService {
       include: [
         {
           model: StudyMaterial,
-          as: 'materials',
-          order: [['year', 'DESC'], ['createdAt', 'DESC']]
+          as: 'materials'
         }
       ]
     });
@@ -141,14 +144,18 @@ class ExamService {
     }
 
     const plain = exam.get({ plain: true });
-    const materials = plain.materials || [];
+    const materials = (plain.materials || []).sort((a, b) => {
+      const yearDiff = (b.year || 0) - (a.year || 0);
+      if (yearDiff !== 0) return yearDiff;
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
 
     return {
       ...plain,
       materialsByType: {
         pyqs: materials.filter((m) => m.materialType === 'pyq'),
         notes: materials.filter((m) => m.materialType === 'notes'),
-        syllabus: materials.filter((m) => m.materialType === 'syllabus'),
+        syllabus: materials.filter((m) => m.materialType === 'syllabus' || m.materialType === 'syllabus_pdf'),
         testSeries: materials.filter((m) => m.materialType === 'test_series'),
         freePdfs: materials.filter((m) => m.isFree)
       }
