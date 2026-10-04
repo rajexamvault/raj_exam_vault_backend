@@ -200,15 +200,6 @@ class ExamService {
 
     // If existing legacy exam has no subjects yet, auto-initialize standard Rajasthan subjects
     if (subjects.length === 0) {
-      let stage = await ExamStage.findOne({ where: { examId: id } });
-      if (!stage) {
-        stage = await ExamStage.create({
-          examId: id,
-          name: 'General / Main Stage',
-          stageOrder: 1
-        });
-      }
-
       const defaultSubjects = [
         'Rajasthan History, Art & Culture',
         'Rajasthan Geography',
@@ -221,7 +212,7 @@ class ExamService {
         const sName = defaultSubjects[i];
         await Subject.create({
           examId: id,
-          stageId: stage.id,
+          stageId: null,
           name: sName,
           slug: sName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
           displayOrder: i + 1,
@@ -270,20 +261,11 @@ class ExamService {
       throw err;
     }
 
-    let stage = await ExamStage.findOne({ where: { examId: id } });
-    if (!stage) {
-      stage = await ExamStage.create({
-        examId: id,
-        name: 'General / Main Stage',
-        stageOrder: 1
-      });
-    }
-
     const count = await Subject.count({ where: { examId: id } });
 
     const newSubject = await Subject.create({
       examId: id,
-      stageId: stage.id,
+      stageId: null,
       name: name.trim(),
       code: code ? code.trim() : null,
       icon: icon || 'BookOpen',
@@ -378,20 +360,13 @@ class ExamService {
       createdBy: userId || null
     });
 
-    // Create default stage for the exam
-    const stage = await ExamStage.create({
-      examId: newExam.id,
-      name: 'General / Main Stage',
-      stageOrder: 1
-    });
-
     // Create mandatory dynamic subjects
     const createdSubjects = [];
     for (let i = 0; i < subjectList.length; i++) {
       const sName = subjectList[i];
       const created = await Subject.create({
         examId: newExam.id,
-        stageId: stage.id,
+        stageId: null,
         name: sName,
         displayOrder: i + 1,
         icon: 'BookOpen',
@@ -402,7 +377,6 @@ class ExamService {
 
     const plainExam = newExam.get({ plain: true });
     plainExam.subjects = createdSubjects;
-    plainExam.stages = [stage];
     return plainExam;
   }
 
@@ -443,10 +417,6 @@ class ExamService {
         .filter(Boolean);
 
       if (subjectList.length > 0) {
-        let stage = await ExamStage.findOne({ where: { examId: id } });
-        if (!stage) {
-          stage = await ExamStage.create({ examId: id, name: 'General / Main Stage', stageOrder: 1 });
-        }
         const existing = await Subject.findAll({ where: { examId: id } });
         const existingNames = new Set(existing.map((s) => s.name.trim().toLowerCase()));
 
@@ -455,7 +425,7 @@ class ExamService {
           if (!existingNames.has(sName.toLowerCase())) {
             await Subject.create({
               examId: id,
-              stageId: stage.id,
+              stageId: null,
               name: sName,
               displayOrder: existing.length + i + 1,
               icon: 'BookOpen',

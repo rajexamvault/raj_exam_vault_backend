@@ -9,12 +9,12 @@ const Subject = sequelize.define('Subject', {
   },
   stageId: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
     references: {
       model: 'ExamStages',
       key: 'id'
     },
-    onDelete: 'CASCADE'
+    onDelete: 'SET NULL'
   },
   examId: {
     type: DataTypes.INTEGER,

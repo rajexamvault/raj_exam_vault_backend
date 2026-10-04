@@ -80,6 +80,16 @@ const getSubjects = async (req, res) => {
   }
 };
 
+const getSubjectsByExam = async (req, res) => {
+  try {
+    const { examId } = req.params ?? {};
+    const subjects = await syllabusHierarchyService.getSubjectsByExam(examId);
+    return res.status(200).json({ success: true, data: subjects });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message ?? 'Failed to get exam subjects' });
+  }
+};
+
 const createSubject = async (req, res) => {
   try {
     const subject = await syllabusHierarchyService.createSubject(req.body ?? {});
@@ -230,6 +240,7 @@ const syllabusHierarchyController = {
   updateStage,
   deleteStage,
   getSubjects,
+  getSubjectsByExam,
   createSubject,
   updateSubject,
   deleteSubject,
@@ -251,6 +262,7 @@ module.exports.createStage = createStage;
 module.exports.updateStage = updateStage;
 module.exports.deleteStage = deleteStage;
 module.exports.getSubjects = getSubjects;
+module.exports.getSubjectsByExam = getSubjectsByExam;
 module.exports.createSubject = createSubject;
 module.exports.updateSubject = updateSubject;
 module.exports.deleteSubject = deleteSubject;

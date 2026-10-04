@@ -139,6 +139,12 @@ const startServer = async () => {
       await sequelize.query('ALTER TABLE `MockTests` ADD CONSTRAINT `MockTests_topicId_fk` FOREIGN KEY (`topicId`) REFERENCES `Topics` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;');
     } catch (_) {}
     try {
+      await sequelize.query('ALTER TABLE `Subjects` MODIFY COLUMN `stageId` INT NULL;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `SyllabusItems` MODIFY COLUMN `stageId` INT NULL;');
+    } catch (_) {}
+    try {
       await sequelize.query('ALTER TABLE `questions` ADD COLUMN `topicId` INT NULL;');
     } catch (_) {}
     try {

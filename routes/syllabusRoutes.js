@@ -13,6 +13,7 @@ router.put('/stages/:id', protect, hasPermission('syllabus:update'), syllabusCon
 router.delete('/stages/:id', protect, hasPermission('syllabus:delete'), syllabusController.deleteStage);
 
 // Subjects
+router.get('/exam-subjects/:examId', syllabusController.getSubjectsByExam);
 router.get('/subjects/:stageId', syllabusController.getSubjects);
 router.post('/subjects', protect, hasPermission('syllabus:create'), syllabusController.createSubject);
 router.put('/subjects/:id', protect, hasPermission('syllabus:update'), syllabusController.updateSubject);

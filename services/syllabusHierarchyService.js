@@ -13,34 +13,34 @@ class SyllabusHierarchyService {
       throw new Error('Exam not found');
     }
 
-    const stages = await ExamStage.findAll({
+    const subjects = await Subject.findAll({
       where: { examId },
-      order: [['stageOrder', 'ASC']],
+      order: [['displayOrder', 'ASC']],
       include: [
         {
-          model: Subject,
-          as: 'subjects',
+          model: Topic,
+          as: 'topics',
           include: [
-            {
-              model: Topic,
-              as: 'topics',
-              include: [
-                {
-                  model: SyllabusItem,
-                  as: 'syllabusItems'
-                }
-              ]
-            },
             {
               model: SyllabusItem,
               as: 'syllabusItems'
             }
           ]
+        },
+        {
+          model: SyllabusItem,
+          as: 'syllabusItems'
         }
       ]
     });
 
+    const stages = await ExamStage.findAll({
+      where: { examId },
+      order: [['stageOrder', 'ASC']]
+    });
+
     const examData = exam.toJSON();
+    examData.subjects = subjects.map(s => s.toJSON());
     examData.stages = stages.map(s => s.toJSON());
     return examData;
   }
@@ -92,26 +92,42 @@ class SyllabusHierarchyService {
 
   // ================= SUBJECTS =================
   async createSubject(data) {
-    const { examId, stageId, name } = data;
-    if (!examId || !stageId || !name) {
-      throw new Error('examId, stageId, and subject name are required');
+    const { examId, name } = data;
+    if (!examId || !name) {
+      throw new Error('examId and subject name are required');
     }
 
-    const stage = await ExamStage.findOne({ where: { id: stageId, examId } });
-    if (!stage) throw new Error('Exam Stage not found for this exam');
+    const exam = await Exam.findByPk(examId);
+    if (!exam) throw new Error('Target Exam not found');
 
     let displayOrder = data.displayOrder;
     if (displayOrder === undefined || displayOrder === null) {
-      const maxOrder = await Subject.max('displayOrder', { where: { stageId } });
+      const maxOrder = await Subject.max('displayOrder', { where: { examId } });
       displayOrder = (maxOrder || 0) + 1;
     }
 
-    const slug = data.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    const slug = data.slug || name.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]+/g, '-').replace(/(^-|-$)+/g, '');
 
     return await Subject.create({
       ...data,
-      slug,
+      examId: Number(examId),
+      stageId: data.stageId ? Number(data.stageId) : null,
+      slug: slug || `subject-${Date.now().toString(36)}`,
       displayOrder
+    });
+  }
+
+  async getSubjectsByExam(examId) {
+    return await Subject.findAll({
+      where: { examId },
+      order: [['displayOrder', 'ASC']],
+      include: [
+        {
+          model: Topic,
+          as: 'topics',
+          attributes: ['id', 'name', 'difficultyLevel', 'estimatedHours', 'displayOrder', 'status']
+        }
+      ]
     });
   }
 
@@ -134,7 +150,7 @@ class SyllabusHierarchyService {
     if (!subject) throw new Error('Subject not found');
 
     if (data.name && !data.slug) {
-      data.slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      data.slug = data.name.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]+/g, '-').replace(/(^-|-$)+/g, '');
     }
 
     return await subject.update(data);
@@ -161,7 +177,8 @@ class SyllabusHierarchyService {
       displayOrder = (maxOrder || 0) + 1;
     }
 
-    const slug = data.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    let slug = data.slug || name.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]+/g, '-').replace(/(^-|-$)+/g, '');
+    if (!slug) slug = `topic-${Date.now().toString(36)}`;
 
     return await Topic.create({
       ...data,
@@ -188,7 +205,9 @@ class SyllabusHierarchyService {
     if (!topic) throw new Error('Topic not found');
 
     if (data.name && !data.slug) {
-      data.slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      let slug = data.name.toLowerCase().replace(/[^a-z0-9\u0900-\u097F]+/g, '-').replace(/(^-|-$)+/g, '');
+      if (!slug) slug = `topic-${Date.now().toString(36)}`;
+      data.slug = slug;
     }
 
     return await topic.update(data);
@@ -203,12 +222,15 @@ class SyllabusHierarchyService {
 
   // ================= SYLLABUS ITEMS =================
   async createSyllabusItem(data) {
-    const { examId, stageId, subjectId, title } = data;
-    if (!examId || !stageId || !subjectId || !title) {
-      throw new Error('examId, stageId, subjectId, and title are required');
+    const { examId, subjectId, title } = data;
+    if (!examId || !subjectId || !title) {
+      throw new Error('examId, subjectId, and title are required');
     }
 
-    return await SyllabusItem.create(data);
+    return await SyllabusItem.create({
+      ...data,
+      stageId: data.stageId ? Number(data.stageId) : null
+    });
   }
 
   async getSyllabusItems(query = {}) {

@@ -18,12 +18,12 @@ const SyllabusItem = sequelize.define('SyllabusItem', {
   },
   stageId: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
     references: {
       model: 'ExamStages',
       key: 'id'
     },
-    onDelete: 'CASCADE'
+    onDelete: 'SET NULL'
   },
   subjectId: {
     type: DataTypes.INTEGER,
