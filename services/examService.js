@@ -336,6 +336,10 @@ class ExamService {
       throw err;
     }
 
+    const cleanTotalVacancies = (totalVacancies === '' || totalVacancies === null || totalVacancies === undefined || isNaN(Number(totalVacancies))) ? 0 : Number(totalVacancies);
+    const cleanDisplayOrder = (displayOrder === '' || displayOrder === null || displayOrder === undefined || isNaN(Number(displayOrder))) ? 0 : Number(displayOrder);
+    const validStatus = ['active', 'published', 'upcoming', 'draft', 'archived', 'inactive'].includes(status) ? status : 'published';
+
     const newExam = await Exam.create({
       title: title.trim(),
       shortName: shortName ? shortName.trim() : 'EXAM',
@@ -352,11 +356,11 @@ class ExamService {
       logoUrl: logoUrl || '',
       bannerUrl: bannerUrl || '',
       badge: badge || 'Popular',
-      totalVacancies: totalVacancies ? Number(totalVacancies) : 0,
+      totalVacancies: cleanTotalVacancies,
       examDate: examDate || null,
-      isFeatured: isFeatured !== undefined ? isFeatured : false,
-      displayOrder: displayOrder ? Number(displayOrder) : 0,
-      status: status || 'published',
+      isFeatured: isFeatured === true || isFeatured === 'true',
+      displayOrder: cleanDisplayOrder,
+      status: validStatus,
       createdBy: userId || null
     });
 
@@ -391,22 +395,15 @@ class ExamService {
       throw err;
     }
 
-    if (updateData.slug && updateData.slug !== exam.slug) {
-      const cleanSlug = updateData.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    let cleanSlug = exam.slug;
+    if (updateData.slug && updateData.slug.trim() !== '' && updateData.slug !== exam.slug) {
+      cleanSlug = updateData.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       const existing = await Exam.findOne({ where: { slug: cleanSlug, id: { [Op.ne]: id } } });
       if (existing) {
         const err = new Error(`Slug '${cleanSlug}' is already taken by another exam.`);
         err.statusCode = 400;
         throw err;
       }
-      updateData.slug = cleanSlug;
-    }
-
-    if (updateData.totalVacancies) {
-      updateData.totalVacancies = Number(updateData.totalVacancies);
-    }
-    if (updateData.displayOrder !== undefined) {
-      updateData.displayOrder = Number(updateData.displayOrder);
     }
 
     // Dynamic subjects update/sync if provided
@@ -418,26 +415,100 @@ class ExamService {
 
       if (subjectList.length > 0) {
         const existing = await Subject.findAll({ where: { examId: id } });
-        const existingNames = new Set(existing.map((s) => s.name.trim().toLowerCase()));
+        const existingMap = new Map(existing.map((s) => [s.name.trim().toLowerCase(), s]));
 
         for (let i = 0; i < subjectList.length; i++) {
           const sName = subjectList[i];
-          if (!existingNames.has(sName.toLowerCase())) {
+          const lowerName = sName.toLowerCase();
+          if (existingMap.has(lowerName)) {
+            const existingSubject = existingMap.get(lowerName);
+            await existingSubject.update({ displayOrder: i + 1, name: sName });
+            existingMap.delete(lowerName);
+          } else {
             await Subject.create({
               examId: id,
               stageId: null,
               name: sName,
-              displayOrder: existing.length + i + 1,
+              displayOrder: i + 1,
               icon: 'BookOpen',
               color: 'blue'
             });
           }
         }
+
+        // Clean up subjects that were removed from the form if safe
+        for (const [, removedSubject] of existingMap) {
+          try {
+            await removedSubject.destroy();
+          } catch (delErr) {
+            console.warn(`Could not delete removed subject ${removedSubject.name}:`, delErr.message);
+          }
+        }
       }
     }
 
-    await exam.update(updateData);
-    return exam;
+    const {
+      title,
+      shortName,
+      category,
+      department,
+      examType,
+      description,
+      eligibility,
+      applicationInfo,
+      officialWebsite,
+      syllabusUrl,
+      icon,
+      logoUrl,
+      bannerUrl,
+      badge,
+      totalVacancies,
+      examDate,
+      isFeatured,
+      displayOrder,
+      status
+    } = updateData;
+
+    const fieldsToUpdate = {};
+    if (title !== undefined) fieldsToUpdate.title = title.trim();
+    if (shortName !== undefined) fieldsToUpdate.shortName = shortName ? shortName.trim() : 'EXAM';
+    if (updateData.slug !== undefined) fieldsToUpdate.slug = cleanSlug;
+    if (category !== undefined) fieldsToUpdate.category = category;
+    if (department !== undefined) fieldsToUpdate.department = department;
+    if (examType !== undefined) fieldsToUpdate.examType = examType;
+    if (description !== undefined) fieldsToUpdate.description = description || '';
+    if (eligibility !== undefined) fieldsToUpdate.eligibility = eligibility || '';
+    if (applicationInfo !== undefined) fieldsToUpdate.applicationInfo = applicationInfo || '';
+    if (officialWebsite !== undefined) fieldsToUpdate.officialWebsite = officialWebsite || '';
+    if (syllabusUrl !== undefined) fieldsToUpdate.syllabusUrl = syllabusUrl || '';
+    if (icon !== undefined) fieldsToUpdate.icon = icon || '🏛️';
+    if (logoUrl !== undefined) fieldsToUpdate.logoUrl = logoUrl || '';
+    if (bannerUrl !== undefined) fieldsToUpdate.bannerUrl = bannerUrl || '';
+    if (badge !== undefined) fieldsToUpdate.badge = badge || 'Popular';
+    if (totalVacancies !== undefined) {
+      fieldsToUpdate.totalVacancies = (totalVacancies === '' || totalVacancies === null || isNaN(Number(totalVacancies))) ? 0 : Number(totalVacancies);
+    }
+    if (examDate !== undefined) fieldsToUpdate.examDate = examDate || null;
+    if (isFeatured !== undefined) fieldsToUpdate.isFeatured = isFeatured === true || isFeatured === 'true';
+    if (displayOrder !== undefined) {
+      fieldsToUpdate.displayOrder = (displayOrder === '' || displayOrder === null || isNaN(Number(displayOrder))) ? 0 : Number(displayOrder);
+    }
+    if (status !== undefined) {
+      fieldsToUpdate.status = ['active', 'published', 'upcoming', 'draft', 'archived', 'inactive'].includes(status) ? status : 'published';
+    }
+
+    await exam.update(fieldsToUpdate);
+
+    const updatedExam = await Exam.findByPk(id, {
+      include: [
+        {
+          model: Subject,
+          as: 'subjects',
+          attributes: ['id', 'name', 'code', 'icon', 'color', 'displayOrder']
+        }
+      ]
+    });
+    return updatedExam || exam;
   }
 
   /**

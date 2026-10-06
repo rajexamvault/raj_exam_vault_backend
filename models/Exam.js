@@ -98,7 +98,7 @@ const Exam = sequelize.define('Exam', {
     defaultValue: 0
   },
   status: {
-    type: DataTypes.ENUM('active', 'published', 'upcoming', 'draft', 'archived'),
+    type: DataTypes.ENUM('active', 'published', 'upcoming', 'draft', 'archived', 'inactive'),
     defaultValue: 'published'
   },
   createdBy: {

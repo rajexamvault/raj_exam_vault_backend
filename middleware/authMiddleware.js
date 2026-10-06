@@ -67,8 +67,24 @@ const requireRole = (...allowedRoles) => {
       });
     }
 
+    // Root user always bypasses all restrictions
+    if (req.user.role === 'root') {
+      return next();
+    }
+
+    // Unverified users cannot access role-restricted features
+    if (!req.user.isVerified) {
+      return res.status(403).json({
+        status: 'fail',
+        isVerified: false,
+        email: req.user.email,
+        message: 'Email verification required. Please verify your email address to continue.'
+      });
+    }
+
+    // SuperAdmin bypasses standard role restriction
     if (req.user.role === 'superadmin') {
-      return next(); // SuperAdmin always bypasses role restriction
+      return next();
     }
 
     if (!allowedRoles.includes(req.user.role)) {
@@ -80,6 +96,24 @@ const requireRole = (...allowedRoles) => {
 
     next();
   };
+};
+
+/**
+ * Require email verification for protected operations
+ */
+const requireVerified = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ status: 'fail', message: 'Authentication required' });
+  }
+  if (req.user.role === 'root' || req.user.isVerified) {
+    return next();
+  }
+  return res.status(403).json({
+    status: 'fail',
+    isVerified: false,
+    email: req.user.email,
+    message: 'Email verification required. Please verify your email.'
+  });
 };
 
 /**
@@ -95,8 +129,8 @@ const hasPermission = (permissionName) => {
       });
     }
 
-    // Root superadmin has all permissions unconditionally
-    if (req.user.role === 'superadmin') {
+    // Root and SuperAdmin have all permissions unconditionally
+    if (req.user.role === 'root' || req.user.role === 'superadmin') {
       return next();
     }
 
@@ -114,6 +148,10 @@ const hasPermission = (permissionName) => {
       });
 
       if (!userRole) {
+        // Safe fallback for built-in admin role if database RBAC table has not been seeded yet
+        if (req.user.role === 'admin') {
+          return next();
+        }
         return res.status(403).json({
           status: 'fail',
           message: `Role '${req.user.role}' not recognized by policy engine`
@@ -141,13 +179,16 @@ const hasPermission = (permissionName) => {
 };
 
 // Convenience helpers
+const requireRoot = requireRole('root');
 const requireSuperAdmin = requireRole('superadmin');
 const requireAdminOrSuperAdmin = requireRole('superadmin', 'admin');
 
 module.exports = {
   protect,
   requireRole,
+  requireVerified,
   hasPermission,
+  requireRoot,
   requireSuperAdmin,
   requireAdminOrSuperAdmin
 };

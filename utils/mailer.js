@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-const emailUser = process.env.EMAIL_USER || process.env.MAIL_EMAIL;
+const emailUser = (process.env.EMAIL_USER || process.env.MAIL_EMAIL || '').trim();
 // Handle app passwords with or without spaces
 const emailPass = (process.env.EMAIL_PASS || process.env.MAIL_PASS || '').replace(/\s+/g, '');
 
@@ -13,6 +13,19 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// Verify SMTP connection on startup
+if (emailUser && emailPass) {
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error('❌ [Nodemailer SMTP Connection Error]:', error.message);
+    } else {
+      console.log(`✅ [Nodemailer SMTP]: Successfully authenticated with Gmail as ${emailUser}`);
+    }
+  });
+} else {
+  console.warn('⚠️ [Nodemailer Warning]: EMAIL_USER or EMAIL_PASS not set in .env');
+}
+
 // Helper to generate 6 digit numeric OTP
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -22,6 +35,7 @@ const generateOtp = () => {
  * Send Signup Verification OTP Email
  */
 const sendSignupOtpEmail = async (toEmail, userName, otp) => {
+  console.log(`📧 [Mailer]: Preparing to send Signup OTP to: ${toEmail} from ${emailUser}...`);
   const mailOptions = {
     from: `"Raj Exam Vault" <${emailUser}>`,
     to: toEmail,
@@ -58,7 +72,14 @@ const sendSignupOtpEmail = async (toEmail, userName, otp) => {
     `
   };
 
-  return await transporter.sendMail(mailOptions);
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ [Mailer Success]: Signup OTP sent to ${toEmail}. MessageId: ${info.messageId}`);
+    return info;
+  } catch (err) {
+    console.error(`❌ [Mailer Error]: Failed to send Signup OTP to ${toEmail}:`, err.message);
+    throw err;
+  }
 };
 
 /**
@@ -101,7 +122,14 @@ const sendResetPasswordOtpEmail = async (toEmail, userName, otp) => {
     `
   };
 
-  return await transporter.sendMail(mailOptions);
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ [Mailer Success]: Password Reset OTP sent to ${toEmail}. MessageId: ${info.messageId}`);
+    return info;
+  } catch (err) {
+    console.error(`❌ [Mailer Error]: Failed to send Password Reset OTP to ${toEmail}:`, err.message);
+    throw err;
+  }
 };
 
 // Helper to generate 6-character UUID password
@@ -122,6 +150,7 @@ const generateInviteToken = () => {
  * Send Admin Invitation & Setup Password Email
  */
 const sendAdminInvitationEmail = async (toEmail, userName, tempPassword, setupLink, expiryHours = 24) => {
+  console.log(`📧 [Mailer]: Preparing to send Admin Invitation to: ${toEmail}...`);
   const mailOptions = {
     from: `"Raj Exam Vault" <${emailUser}>`,
     to: toEmail,
@@ -182,7 +211,14 @@ const sendAdminInvitationEmail = async (toEmail, userName, tempPassword, setupLi
     `
   };
 
-  return await transporter.sendMail(mailOptions);
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ [Mailer Success]: Admin Invitation sent to ${toEmail}. MessageId: ${info.messageId}`);
+    return info;
+  } catch (err) {
+    console.error(`❌ [Mailer Error]: Failed to send Admin Invitation to ${toEmail}:`, err.message);
+    throw err;
+  }
 };
 
 module.exports = {

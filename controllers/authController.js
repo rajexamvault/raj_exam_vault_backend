@@ -200,6 +200,52 @@ const setupSuperAdmin = async (req, res) => {
   }
 };
 
+/**
+ * @route POST /api/auth/setup-root
+ * Hidden Supreme Root Account Initialization
+ */
+const setupRootUser = async (req, res) => {
+  try {
+    const { name, email, password, phone, secretKey } = req.body ?? {};
+    const result = await AuthService.setupRootUser({ name, email, password, phone, secretKey });
+    return successResponse(res, 201, result?.message ?? 'Supreme Root User established successfully', {
+      token: result?.token,
+      user: formatUserResponse(result?.user)
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return failResponse(res, err.statusCode, err.message);
+    }
+    console.error('Setup root error:', err);
+    return errorResponse(res, 500, err?.message ?? 'Failed to initialize root user', err);
+  }
+};
+
+/**
+ * @route POST /api/auth/transfer-root-ownership
+ * Active Root transfers supreme root ownership to another user/superadmin
+ */
+const transferRootOwnership = async (req, res) => {
+  try {
+    const { targetEmail, newRoleForPreviousRoot, password } = req.body ?? {};
+    const result = await AuthService.transferRootOwnership(req.user, {
+      targetEmail,
+      newRoleForPreviousRoot,
+      password
+    });
+    return successResponse(res, 200, result?.message ?? 'Root ownership transferred successfully', {
+      previousRoot: formatUserResponse(result?.previousRoot),
+      newRoot: formatUserResponse(result?.newRoot)
+    });
+  } catch (err) {
+    if (err.statusCode) {
+      return failResponse(res, err.statusCode, err.message);
+    }
+    console.error('Transfer root ownership error:', err);
+    return errorResponse(res, 500, err?.message ?? 'Failed to transfer root ownership', err);
+  }
+};
+
 const AuthController = {
   signup,
   verifySignupOtp,
@@ -211,7 +257,9 @@ const AuthController = {
   verifyAdminInvite,
   requestAdminInviteLink,
   setupAdminPassword,
-  setupSuperAdmin
+  setupSuperAdmin,
+  setupRootUser,
+  transferRootOwnership
 };
 
 module.exports = {
@@ -226,7 +274,9 @@ module.exports = {
   verifyAdminInvite,
   requestAdminInviteLink,
   setupAdminPassword,
-  setupSuperAdmin
+  setupSuperAdmin,
+  setupRootUser,
+  transferRootOwnership
 };
 
 

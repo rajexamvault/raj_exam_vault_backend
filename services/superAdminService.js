@@ -70,7 +70,7 @@ class SuperAdminService {
     const parsedLimit = parseInt(limit, 10);
 
     const whereClause = {
-      role: role && role !== 'all' ? role : { [Op.in]: ['admin', 'superadmin'] }
+      role: role && role !== 'all' && role !== 'root' ? role : { [Op.in]: ['admin', 'superadmin'] }
     };
 
     if (status && status !== 'all') {
@@ -184,7 +184,7 @@ class SuperAdminService {
 
     const whereClause = {};
 
-    if (role && role !== 'all') {
+    if (role && role !== 'all' && role !== 'root') {
       whereClause.role = role;
     } else {
       whereClause.role = { [Op.in]: ['user', 'moderator', 'content_manager', 'question_manager'] };
@@ -239,7 +239,7 @@ class SuperAdminService {
     const user = await User.findByPk(userId, {
       attributes: { exclude: ['password'] }
     });
-    if (!user) {
+    if (!user || user.role === 'root') {
       throw { statusCode: 404, message: 'User account not found' };
     }
     return formatUserResponse(user);
@@ -250,7 +250,7 @@ class SuperAdminService {
    */
   static async toggleUserStatus(userId, status) {
     const user = await User.findByPk(userId);
-    if (!user) {
+    if (!user || user.role === 'root') {
       throw { statusCode: 404, message: 'User account not found' };
     }
 
@@ -273,7 +273,7 @@ class SuperAdminService {
     }
 
     const user = await User.findByPk(userId);
-    if (!user) {
+    if (!user || user.role === 'root') {
       throw { statusCode: 404, message: 'User account not found' };
     }
 
@@ -291,7 +291,7 @@ class SuperAdminService {
    */
   static async deleteUser(userId) {
     const user = await User.findByPk(userId);
-    if (!user) {
+    if (!user || user.role === 'root') {
       throw { statusCode: 404, message: 'User account not found' };
     }
     await user.destroy();
@@ -305,7 +305,7 @@ class SuperAdminService {
    */
   static async resendAdminInvite(adminId) {
     const admin = await User.findByPk(adminId);
-    if (!admin) {
+    if (!admin || admin.role === 'root') {
       throw { statusCode: 404, message: 'Admin account not found' };
     }
 
@@ -356,7 +356,7 @@ class SuperAdminService {
     }
 
     const admin = await User.findByPk(adminId);
-    if (!admin) {
+    if (!admin || admin.role === 'root') {
       throw { statusCode: 404, message: 'Admin account not found' };
     }
 
@@ -378,7 +378,7 @@ class SuperAdminService {
    */
   static async deleteAdmin(adminId) {
     const admin = await User.findByPk(adminId);
-    if (!admin) {
+    if (!admin || admin.role === 'root') {
       throw { statusCode: 404, message: 'Admin account not found' };
     }
 

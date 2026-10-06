@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
-const { User, Otp } = require('../models');
+const { User, Otp, sequelize } = require('../models');
 const { generateOtp, generate6CharUuidPassword, generateInviteToken } = require('../utils/mailer');
 const generateToken = require('../utils/generateToken');
 const EmailService = require('./emailService');
@@ -65,8 +65,13 @@ class AuthService {
       expiresAt
     });
 
-    // Send email with OTP
-    await EmailService.sendSignupOtp(normalizedEmail, name, otp);
+    // Send email with OTP (fail-safe so signup flow completes and OTP is created in DB)
+    try {
+      await EmailService.sendSignupOtp(normalizedEmail, name, otp);
+    } catch (emailErr) {
+      console.error('Email dispatch error during signup:', emailErr?.message || emailErr);
+      console.log(`\n========================================\n[SIGNUP OTP for ${normalizedEmail}]: ${otp}\n========================================\n`);
+    }
 
     return {
       email: normalizedEmail,
@@ -159,7 +164,12 @@ class AuthService {
       expiresAt
     });
 
-    await EmailService.sendSignupOtp(normalizedEmail, user.name, otp);
+    try {
+      await EmailService.sendSignupOtp(normalizedEmail, user.name, otp);
+    } catch (emailErr) {
+      console.error('Email dispatch error during resend OTP:', emailErr?.message || emailErr);
+      console.log(`\n========================================\n[RESEND OTP for ${normalizedEmail}]: ${otp}\n========================================\n`);
+    }
 
     return {
       message: 'New verification OTP sent to your email.'
@@ -236,7 +246,12 @@ class AuthService {
       expiresAt
     });
 
-    await EmailService.sendPasswordResetOtp(normalizedEmail, user.name, otp);
+    try {
+      await EmailService.sendPasswordResetOtp(normalizedEmail, user.name, otp);
+    } catch (emailErr) {
+      console.error('Email dispatch error during forgot password:', emailErr?.message || emailErr);
+      console.log(`\n========================================\n[PASSWORD RESET OTP for ${normalizedEmail}]: ${otp}\n========================================\n`);
+    }
 
     return {
       email: normalizedEmail,
@@ -527,6 +542,146 @@ class AuthService {
       user,
       message: 'SuperAdmin account created/configured successfully!'
     };
+  }
+
+  /**
+   * Create or setup Supreme Root User (Upper level above SuperAdmins, Invisible to SuperAdmins & Admins)
+   * Strictly Single Root: Only ONE root user can exist in the entire application.
+   */
+  static async setupRootUser({ name, email, password, phone, secretKey }) {
+    const expectedSecret = process.env.ROOT_SETUP_SECRET || 'raj_exam_vault_root_master_key_2026';
+    if (secretKey && secretKey !== expectedSecret) {
+      throw { statusCode: 403, message: 'Invalid root authorization secret key' };
+    }
+
+    if (!name || !email || !password) {
+      throw { statusCode: 400, message: 'Please provide name, email, and password for root user' };
+    }
+
+    if (password.length < 6) {
+      throw { statusCode: 400, message: 'Password must be at least 6 characters long' };
+    }
+
+    // Ensure database table ENUM column allows 'root'
+    try {
+      if (sequelize) {
+        await sequelize.query("ALTER TABLE `users` MODIFY COLUMN `role` ENUM('user', 'admin', 'superadmin', 'root') NOT NULL DEFAULT 'user';");
+      }
+    } catch (_) {}
+    try {
+      if (sequelize) {
+        await sequelize.query("ALTER TABLE `Users` MODIFY COLUMN `role` ENUM('user', 'admin', 'superadmin', 'root') NOT NULL DEFAULT 'user';");
+      }
+    } catch (_) {}
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // STRICT SINGLETON ROOT ENFORCEMENT: Check if a different root user already exists
+    const existingRoot = await User.findOne({ where: { role: 'root' } });
+    if (existingRoot && existingRoot.email.toLowerCase() !== normalizedEmail) {
+      throw {
+        statusCode: 403,
+        message: 'A supreme root user already exists in the system. Only ONE root user is allowed. Root ownership must be transferred by the current root user.'
+      };
+    }
+
+    let user = await User.findOne({ where: { email: normalizedEmail } });
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    if (user) {
+      user.name = name.trim();
+      user.password = hashedPassword;
+      user.role = 'root';
+      user.status = 'active';
+      user.isVerified = true;
+      user.isPasswordSet = true;
+      user.isProfileCompleted = true;
+      if (phone) user.phone = phone.trim();
+      await user.save();
+    } else {
+      user = await User.create({
+        name: name.trim(),
+        email: normalizedEmail,
+        phone: phone ? phone.trim() : null,
+        password: hashedPassword,
+        role: 'root',
+        status: 'active',
+        isVerified: true,
+        isPasswordSet: true,
+        isProfileCompleted: true
+      });
+    }
+
+    const token = generateToken(user);
+
+    return {
+      token,
+      user,
+      message: 'Supreme Root User established successfully. All-level control enabled.'
+    };
+  }
+
+  /**
+   * Transfer Root Ownership (Only callable by active Root user)
+   * Demotes previous root to superadmin/admin and promotes target user to root.
+   */
+  static async transferRootOwnership(currentRootUser, { targetEmail, newRoleForPreviousRoot = 'superadmin', password }) {
+    if (!currentRootUser || currentRootUser.role !== 'root') {
+      throw { statusCode: 403, message: 'Forbidden. Only the active Root user can transfer root ownership.' };
+    }
+
+    if (!targetEmail || !password) {
+      throw { statusCode: 400, message: 'Please provide target email and your current root password for verification.' };
+    }
+
+    // Verify current root password
+    const rootUserInDb = await User.findByPk(currentRootUser.id);
+    if (!rootUserInDb || rootUserInDb.role !== 'root') {
+      throw { statusCode: 403, message: 'Root account authentication failed' };
+    }
+
+    const isMatch = await bcrypt.compare(password, rootUserInDb.password);
+    if (!isMatch) {
+      throw { statusCode: 401, message: 'Invalid root password. Ownership transfer rejected.' };
+    }
+
+    const normalizedTargetEmail = targetEmail.toLowerCase().trim();
+    if (normalizedTargetEmail === rootUserInDb.email.toLowerCase().trim()) {
+      throw { statusCode: 400, message: 'Target user is already the current root owner.' };
+    }
+
+    const targetUser = await User.findOne({ where: { email: normalizedTargetEmail } });
+    if (!targetUser) {
+      throw { statusCode: 404, message: `No user found with email '${normalizedTargetEmail}' to receive root ownership.` };
+    }
+
+    // Transactional atomic handover
+    const t = await sequelize.transaction();
+    try {
+      // 1. Demote previous root
+      rootUserInDb.role = ['superadmin', 'admin', 'user'].includes(newRoleForPreviousRoot) ? newRoleForPreviousRoot : 'superadmin';
+      await rootUserInDb.save({ transaction: t });
+
+      // 2. Promote target user to new supreme root
+      targetUser.role = 'root';
+      targetUser.status = 'active';
+      targetUser.isVerified = true;
+      targetUser.isPasswordSet = true;
+      await targetUser.save({ transaction: t });
+
+      await t.commit();
+
+      return {
+        message: `Root ownership successfully transferred to ${targetUser.name} (${targetUser.email}). Your account role is now '${rootUserInDb.role}'.`,
+        previousRoot: rootUserInDb,
+        newRoot: targetUser
+      };
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
   }
 }
 

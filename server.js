@@ -156,6 +156,12 @@ const startServer = async () => {
     try {
       await sequelize.query('ALTER TABLE `Questions` ADD CONSTRAINT `Questions_topicId_fk` FOREIGN KEY (`topicId`) REFERENCES `Topics` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;');
     } catch (_) {}
+    try {
+      await sequelize.query("ALTER TABLE `users` MODIFY COLUMN `role` ENUM('user', 'admin', 'superadmin', 'root') NOT NULL DEFAULT 'user';");
+    } catch (_) {}
+    try {
+      await sequelize.query("ALTER TABLE `Users` MODIFY COLUMN `role` ENUM('user', 'admin', 'superadmin', 'root') NOT NULL DEFAULT 'user';");
+    } catch (_) {}
     await sequelize.sync();
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1;');
     console.log('✅ Database models synchronized successfully.');

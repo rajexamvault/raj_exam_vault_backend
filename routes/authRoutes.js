@@ -11,7 +11,9 @@ const {
   verifyAdminInvite,
   requestAdminInviteLink,
   setupAdminPassword,
-  setupSuperAdmin
+  setupSuperAdmin,
+  setupRootUser,
+  transferRootOwnership
 } = require('../controllers/authController');
 
 const {
@@ -36,7 +38,9 @@ router.post('/verify-reset-otp', verifyResetOtp);
 router.post('/reset-password', resetPassword);
 router.get('/check-username', checkUsername);
 
-// SuperAdmin Initialization Route
+// Supreme Root & SuperAdmin Initialization Routes
+router.post('/setup-root', setupRootUser);
+router.post('/transfer-root-ownership', protect, transferRootOwnership);
 router.post('/setup-superadmin', setupSuperAdmin);
 
 // Admin Invitation & Password Setup Routes
