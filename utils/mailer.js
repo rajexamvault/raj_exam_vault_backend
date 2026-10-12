@@ -221,6 +221,89 @@ const sendAdminInvitationEmail = async (toEmail, userName, tempPassword, setupLi
   }
 };
 
+/**
+ * Send Bug / Issue Resolved Notification Email
+ */
+const sendBugResolvedEmail = async (toEmail, userName, bugTitle, resolutionNotes, checkLink) => {
+  console.log(`📧 [Mailer]: Preparing to send Bug Resolved email to: ${toEmail}...`);
+  const finalCheckLink = checkLink || process.env.FRONTEND_URL || 'https://raj-exam-vault-frontend.vercel.app';
+  
+  const mailOptions = {
+    from: `"Raj Exam Vault Support" <${emailUser}>`,
+    to: toEmail,
+    subject: `✅ Your Bug is Fixed! Now Check: ${bugTitle || 'Reported Issue'} | Raj Exam Vault`,
+    html: `
+      <div style="font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; max-width: 620px; margin: 0 auto; padding: 28px; background: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0; color: #1e293b;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="display: inline-block; background: linear-gradient(135deg, #090D16 0%, #1e1b4b 100%); padding: 10px 22px; border-radius: 10px; margin-bottom: 8px; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);">
+            <span style="color: #ffffff; font-size: 20px; font-weight: 900; letter-spacing: 0.5px;">RAJ EXAM <span style="color: #ef4444;">VAULT</span></span>
+          </div>
+          <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Quality & Bug Resolution Desk</p>
+        </div>
+
+        <div style="background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%); border-radius: 12px; padding: 24px; margin-bottom: 22px; border: 1px solid #a7f3d0;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <div style="background: #10b981; color: #ffffff; font-size: 18px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-weight: bold; text-align: center; line-height: 36px;">
+              ✓
+            </div>
+            <div>
+              <h2 style="font-size: 20px; color: #065f46; margin: 0; font-weight: 800;">Your Bug is Fixed! Now Check 🚀</h2>
+              <p style="font-size: 13px; color: #047857; margin: 2px 0 0 0; font-weight: 500;">Hello ${userName || 'Aspirant'}, our technical team has resolved your issue.</p>
+            </div>
+          </div>
+          
+          <div style="background: #ffffff; border-radius: 10px; padding: 18px; border: 1px solid #d1fae5; margin-top: 16px;">
+            <div style="margin-bottom: 10px;">
+              <span style="font-size: 11px; font-weight: 800; color: #059669; text-transform: uppercase; letter-spacing: 0.5px;">Reported Issue:</span>
+              <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 2px;">
+                "${bugTitle || 'Reported Bug'}"
+              </div>
+            </div>
+
+            ${resolutionNotes ? `
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e2e8f0;">
+              <span style="font-size: 11px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Superadmin Resolution Note:</span>
+              <div style="font-size: 14px; color: #334155; margin-top: 4px; line-height: 1.6; background: #f8fafc; padding: 10px 14px; border-radius: 8px; border-left: 3px solid #10b981;">
+                ${resolutionNotes}
+              </div>
+            </div>
+            ` : `
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e2e8f0;">
+              <div style="font-size: 14px; color: #334155; background: #f8fafc; padding: 10px 14px; border-radius: 8px; border-left: 3px solid #10b981;">
+                The reported bug has been verified and permanently resolved. Please check now on your dashboard.
+              </div>
+            </div>
+            `}
+          </div>
+
+          <div style="text-align: center; margin: 26px 0 16px 0;">
+            <a href="${finalCheckLink}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; font-size: 15px; font-weight: 700; padding: 13px 34px; border-radius: 10px; text-decoration: none; box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);">
+              🔍 Check Now on Platform →
+            </a>
+          </div>
+
+          <p style="font-size: 12px; color: #065f46; text-align: center; margin: 0; font-weight: 500;">
+            Thank you for helping us make Raj Exam Vault faster, smoother, and error-free for every aspirant!
+          </p>
+        </div>
+
+        <div style="text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+          &copy; ${new Date().getFullYear()} Raj Exam Vault. Empowering Rajasthan Government Exam Aspirants.
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ [Mailer Success]: Bug Resolved notification sent to ${toEmail}. MessageId: ${info.messageId}`);
+    return info;
+  } catch (err) {
+    console.error(`❌ [Mailer Error]: Failed to send Bug Resolved email to ${toEmail}:`, err.message);
+    throw err;
+  }
+};
+
 module.exports = {
   transporter,
   generateOtp,
@@ -228,5 +311,7 @@ module.exports = {
   generateInviteToken,
   sendSignupOtpEmail,
   sendResetPasswordOtpEmail,
-  sendAdminInvitationEmail
+  sendAdminInvitationEmail,
+  sendBugResolvedEmail
 };
+

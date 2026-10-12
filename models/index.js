@@ -357,6 +357,7 @@ StudyMaterial.belongsTo(User, {
 });
 
 const Bookmark = require('./Bookmark');
+const BugReport = require('./BugReport');
 
 // Bookmark Associations
 User.hasMany(Bookmark, {
@@ -367,6 +368,27 @@ User.hasMany(Bookmark, {
 Bookmark.belongsTo(User, {
   foreignKey: 'userId',
   as: 'user'
+});
+
+// BugReport Associations
+User.hasMany(BugReport, {
+  foreignKey: 'userId',
+  as: 'bugReports',
+  onDelete: 'SET NULL'
+});
+BugReport.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
+User.hasMany(BugReport, {
+  foreignKey: 'resolvedBy',
+  as: 'resolvedBugReports',
+  onDelete: 'SET NULL'
+});
+BugReport.belongsTo(User, {
+  foreignKey: 'resolvedBy',
+  as: 'resolver'
 });
 
 module.exports = {
@@ -388,5 +410,7 @@ module.exports = {
   Role,
   Permission,
   RolePermission,
-  Bookmark
+  Bookmark,
+  BugReport
 };
+

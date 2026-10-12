@@ -162,8 +162,18 @@ const startServer = async () => {
     try {
       await sequelize.query("ALTER TABLE `Users` MODIFY COLUMN `role` ENUM('user', 'admin', 'superadmin', 'root') NOT NULL DEFAULT 'user';");
     } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `bug_reports` ADD COLUMN `contactEmail` VARCHAR(255) NULL;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `bug_reports` ADD COLUMN `contactName` VARCHAR(255) NULL;');
+    } catch (_) {}
+    try {
+      await sequelize.query('ALTER TABLE `bug_reports` ADD COLUMN `contactPhone` VARCHAR(50) NULL;');
+    } catch (_) {}
     await sequelize.sync();
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1;');
+
     console.log('✅ Database models synchronized successfully.');
 
     // Seed/sync default RBAC roles and permissions

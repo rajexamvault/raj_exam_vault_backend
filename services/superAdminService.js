@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
-const { User, Exam, StudyMaterial } = require('../models');
+const { User, Exam, StudyMaterial, BugReport } = require('../models');
 const { generate6CharUuidPassword, generateInviteToken } = require('../utils/mailer');
 const EmailService = require('./emailService');
 const { formatAdminResponse, formatUserResponse } = require('../views/userView');
@@ -48,6 +48,14 @@ class SuperAdminService {
     const totalMaterials = await StudyMaterial.count();
     const totalPyqs = await StudyMaterial.count({ where: { materialType: 'pyq' } });
     const totalNotes = await StudyMaterial.count({ where: { materialType: 'notes' } });
+    
+    const totalBugs = await BugReport.count().catch(() => 0);
+    const pendingBugs = await BugReport.count({
+      where: { status: { [Op.in]: ['open', 'investigating'] } }
+    }).catch(() => 0);
+    const resolvedBugs = await BugReport.count({
+      where: { status: 'resolved' }
+    }).catch(() => 0);
 
     return {
       totalUsers,
@@ -58,9 +66,13 @@ class SuperAdminService {
       totalExams,
       totalMaterials,
       totalPyqs,
-      totalNotes
+      totalNotes,
+      totalBugs,
+      pendingBugs,
+      resolvedBugs
     };
   }
+
 
   /**
    * Get paginated list of admins with search and status filtering

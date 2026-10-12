@@ -15,6 +15,7 @@ const mockTestRoutes = require('./mockTestRoutes');
 const currentAffairRoutes = require('./currentAffairRoutes');
 const announcementRoutes = require('./announcementRoutes');
 const searchRoutes = require('./searchRoutes');
+const bugReportRoutes = require('./bugReportRoutes');
 
 // Comprehensive System Health & Diagnostic endpoint
 router.get('/health', async (req, res) => {
@@ -60,5 +61,8 @@ router.use('/tests', mockTestRoutes);
 router.use('/current-affairs', currentAffairRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/search', searchRoutes);
+router.use('/reports', bugReportRoutes);
+router.use('/bugs', bugReportRoutes);
 
 module.exports = router;
+
